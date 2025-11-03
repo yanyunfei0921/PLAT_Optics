@@ -1,0 +1,58 @@
+{
+  "devices": [
+    {
+      "cnName": "光源",
+      "connected": false,
+      "key": "light_source",
+      "port": "COM6"
+    },
+    {
+      "cnName": "三轴电机",
+      "connected": false,
+      "key": "three_axis_motor",
+      "port": "COM3"
+    },
+    {
+      "cnName": "延时模块",
+      "connected": false,
+      "key": "delay_module",
+      "port": "COM1"
+    },
+    {
+      "cnName": "导轨电机",
+      "connected": false,
+      "key": "rail_motor",
+      "port": "COM18"
+    }
+  ],
+  "configs": {
+    "delay_module": {
+      "baudrate": 115200,
+      "dataBits": 8,
+      "stopBits": 1,
+      "parity": "None",
+      "timeout": 1000
+    },
+    "light_source": {
+      "baudrate": 9600,
+      "dataBits": 8,
+      "stopBits": 1,
+      "parity": "None",
+      "timeout": 1000
+    },
+    "rail_motor": {
+      "baudrate": 38400,
+      "dataBits": 8,
+      "parity": "None",
+      "stopBits": 1,
+      "timeout": 1000
+    },
+    "three_axis_motor": {
+      "baudrate": 9600,
+      "dataBits": 8,
+      "stopBits": 1,
+      "parity": "None",
+      "timeout": 1000
+    }
+  }
+}

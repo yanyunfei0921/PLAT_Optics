@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>光电测试系统软件平台</title>
+
+    <script type="text/javascript" src="/static/jsscripts/vue.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/axios.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/elementui/lib-master/index.js"></script>
+
+    <!-- 样式设置 -->
+    <link rel="stylesheet" href="/static/jsscripts/elementui/lib-master/theme-chalk/index.css">
+    <!--link rel="icon" type="image/x-icon" href="/static/images/favicon.ico"-->
+</head>
+<style>
+    html{
+        height: calc(100%);
+    }
+    .ate-head-title{
+        margin-top: 10px;
+        margin-bottom: 10px;
+        margin-left: 10px;
+        float: left;
+        font: normal normal 600 24px/30px Microsoft YaHei UI;
+        color: #FFFFFF;
+    }
+    .ate-head-switch{
+        margin-top: 10px;
+        margin-bottom: 10px;
+        margin-right: 10px;
+        float: right;
+        font: normal normal 600 24px/30px Microsoft YaHei UI;
+        color: #FFFFFF;
+    }
+</style>
+
+<body>
+    <div id="login" style="background-image: url(/static/images/system_intro.png);background-size: cover;height: 98vh;">
+        <div style="display:flex; justify-content: center; padding-top: 10vh;">
+            <el-card style="width: 60vw">
+                <div slot="header" class="clearfix">
+                    <h1>光电测试系统软件平台</h1>
+                </div>
+                <el-form :model="usrInfo">
+                    <el-form-item label="用户名">
+                        <el-input v-model="usrInfo.usrName" placeholder="请输入内容"></el-input>
+                    </el-form-item>
+                    <el-row style="float: right;">
+                        <el-button @click="logAdmin" type="info" plain style="margin-top: 20px; margin-bottom: 20px; margin-right: 20px;">登录</el-button>
+                    </el-row>
+                </el-form>
+                <el-divider content-position="right">版本号:&nbsp;v1.3&nbsp;(2025-10)</el-divider>
+            </el-card>
+        </div>
+    </div>
+    <script>
+        var vm = new Vue({
+            el: "#login",
+            data: {
+                usrInfo:{
+                    usrName: "",
+                },
+            },
+            created(){
+            },
+            methods: {
+                logAdmin(){
+                    if (this.usrInfo.usrName.length == 0){
+                        this.$message.warning("请输入用户名")
+                        return 
+                    };
+                    try{ window.sessionStorage.setItem('usrname', this.usrInfo.usrName); }catch(e){}
+                    window.location.href = "/";
+                }
+            }
+        })
+    </script>
+</body>
+</html>

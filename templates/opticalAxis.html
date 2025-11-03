@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- JS 引入（与 index/login/serialSetting 保持一致） -->
+    <script type="text/javascript" src="/static/jsscripts/vue.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/axios.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/elementui/lib-master/index.js"></script>
+
+    <!-- 样式引入 -->
+    <link rel="stylesheet" href="/static/jsscripts/elementui/lib-master/theme-chalk/index.css">
+
+    <title>光轴对准</title>
+
+    <style>
+        html{ height:calc(100%); }
+        body{ background:#f5f7fa; margin:0; height:100%; overflow-y:hidden; }
+        .page{ padding:16px; }
+        .card{ margin-bottom:12px; }
+        .toolbar{ display:flex; gap:8px; align-items:center; }
+        .row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+        .steps-bar{ flex:1; min-width:0; }
+        /* 压缩 Steps 高度与字号，使整体更“矮” */
+        .el-steps--simple{ padding:6px 8px; background:transparent; }
+        .el-steps--simple .el-step__title{ font-size:12px; }
+        .el-steps--simple .el-step__head.is-process, 
+        .el-steps--simple .el-step__head.is-finish{ transform:scale(0.9); }
+        .el-steps--simple .el-step__arrow{ transform:scale(0.9); }
+        /* 次要文字色与 serialSetting 风格一致 */
+        .subtle{ color:#909399; }
+        .placeholder{
+            height:320px;
+            border:1px dashed #dcdfe6;
+            background: #fff;
+            border-radius:4px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color:#c0c4cc;
+        }
+        /* 更紧凑的顶部行高度 */
+        .topbar-card .el-card__body{ padding:6px 10px; }
+        .topbar-card .row{ gap:8px; }
+        .topbar-card .el-steps--simple{ padding:2px 6px; }
+        .topbar-card .el-steps--simple .el-step__title{ font-size:12px; line-height:16px; }
+        .topbar-card .toolbar .el-button--mini{ padding:2px 8px; line-height:16px; height:22px; }
+        .topbar-card .subtle{ font-size:12px; }
+        /* L 形布局：左大（相机），右侧栏通高，底部在左下 */
+        .camera-layout{ 
+            display:grid; 
+            grid-template-columns: 1.4fr 840px; 
+            grid-template-rows: auto 100px; 
+            grid-template-areas: 'cam side' 'bottom side';
+            gap:12px; 
+        }
+        .panel{
+            background:#fff;
+            border:1px solid #ebeef5;
+            border-radius:4px;
+            overflow:hidden;
+            display:flex;
+            flex-direction:column;
+            min-width:0;
+        }
+        .panel__hd{ 
+            padding:8px 10px; 
+            border-bottom:1px solid #ebeef5; 
+            font-weight:500; 
+            font-size:13px; 
+            color:#606266; 
+            display:flex; align-items:center; justify-content:space-between;
+        }
+        .panel__bd{ flex:1; display:flex; align-items:center; justify-content:center; background:#fafafa; }
+        .panel__bd--cam{ background:#000; color:#909399; }
+        .panel__bd canvas, .panel__bd img{ max-width:100%; max-height:100%; display:block; }
+        .area-cam{ grid-area: cam; }
+        .area-side{ grid-area: side; }
+        .area-bottom{ grid-area: bottom; }
+        /* 固定 4:3 的相机区域（不随图像比例变化） */
+        .cam-viewport{ 
+            --cam-aspect: 75%; /* 4:3 */
+            position:relative; 
+            width:100%; 
+            background:#000; 
+            margin: 0 auto;
+        }
+        .cam-viewport::before{ content:""; display:block; padding-top: var(--cam-aspect); }
+        .cam-viewport__media{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+        .cam-viewport__placeholder{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#c0c4cc; font-size:12px; }
+        @media (max-width: 1366px){
+            .camera-layout{ grid-template-columns: 1.2fr 760px; grid-template-rows: auto 100px; }
+        }
+        /* 侧栏阶段模块 */
+        .stage-item{ padding:10px; border:1px solid #ebeef5; border-radius:4px; background:#fff; }
+        .stage-item--active{ border-color:#409EFF; background:#ecf5ff; }
+        .stage-item__title{ font-weight:500; color:#303133; margin-bottom:4px; }
+        .stage-item__desc{ font-size:12px; color:#909399; }
+        /* 测试结果区域行间距适当增大 */
+        .stage-item--result .toolbar{ margin-top:6px; }
+        .area-side .panel__bd{ display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:8px; padding:10px; }
+    </style>
+</head>
+<body>
+<div id="app" class="page">
+    <!-- 顶部：步骤条 + 上一步/下一步（同一行，紧凑高度） -->
+    <el-card class="card topbar-card" shadow="never">
+        <div class="row">
+            <div class="steps-bar">
+                <el-steps :active="currentStep" simple finish-status="success" process-status="process">
+                    <el-step v-for="(s, idx) in steps" :key="s.key" :title="s.title"></el-step>
+                </el-steps>
+            </div>
+            <div class="toolbar">
+                <span class="subtle">步骤：{{ currentStep+1 }}/{{ steps.length }}</span>
+                <el-button size="mini" icon="el-icon-arrow-left" @click="prevStep" :disabled="currentStep===0">上一步</el-button>
+                <el-button size="mini" type="primary" @click="nextStep" :disabled="currentStep===steps.length-1">
+                    下一步<i class="el-icon-arrow-right el-icon--right"></i>
+                </el-button>
+            </div>
+        </div>
+    </el-card>
+
+    <!-- 下方区域：L 形布局（div 容器，无标题） -->
+    <div class="card">
+        <div class="camera-layout">
+            <!-- 左侧大面积：相机显示 -->
+            <div class="panel area-cam">
+                <div class="panel__hd">
+                    <div>相机显示区</div>
+                    <div class="toolbar">
+                        <el-select v-model="selectedCamera" size="mini" placeholder="选择相机" style="width:160px">
+                            <el-option v-for="cam in cameraList" :key="cam.value" :label="cam.label" :value="cam.value"></el-option>
+                        </el-select>
+                        <el-dropdown :hide-on-click="false" trigger="click">
+                            <el-button size="mini">
+                                显示设置<i class="el-icon-arrow-down el-icon--right"></i>
+                            </el-button>
+                            <el-dropdown-menu slot="dropdown">
+                                <el-dropdown-item>
+                                    <el-checkbox v-model="drawCentroid">绘制质心</el-checkbox>
+                                </el-dropdown-item>
+                                <el-dropdown-item>
+                                    <el-checkbox v-model="drawCross">绘制十字</el-checkbox>
+                                </el-dropdown-item>
+                                <el-dropdown-item>
+                                    <el-checkbox v-model="showOriginal">显示原图</el-checkbox>
+                                </el-dropdown-item>
+                            </el-dropdown-menu>
+                        </el-dropdown>
+                        <el-button size="mini" icon="el-icon-setting" @click="openCameraSettings">设置</el-button>
+                        <el-switch v-model="cameraEnabled" size="mini" active-text="开" inactive-text="关"></el-switch>
+                    </div>
+                </div>
+                <div class="panel__bd panel__bd--cam">
+                    <div class="cam-viewport">
+                        <template v-if="cameraEnabled && shownImageSrc">
+                            <img :src="shownImageSrc" alt="camera" class="cam-viewport__media">
+                        </template>
+                        <template v-else>
+                            <span class="cam-viewport__placeholder">4:3 预览占位</span>
+                        </template>
+                    </div>
+                </div>
+            </div>
+            <!-- 右侧通高：待补充 -->
+            <div class="panel area-side">
+                <div class="panel__hd">人机交互区</div>
+                <div class="panel__bd">
+                    <div class="stage-item" :class="{ 'stage-item--active': activeStageIndex === 0 }">
+                        <div class="stage-item__title"><b>粗调对准</b></div>
+                        <div class="stage-item__desc">对应步骤：粗调对准</div>
+                    <div class="toolbar">
+                        <div>指示激光器控制：</div>
+                        <el-button size="mini" :type="laserOn ? 'success' : 'default'" @click="toggleLaser">{{ laserOn ? '已打开' : '已关闭' }}</el-button>
+                        <div style="width:220px;">
+                            <el-slider v-model="laserPower" :min="0" :max="100" :step="1" show-input input-size="mini" :disabled="!laserOn"></el-slider>
+                        </div>
+                        <el-button size="mini" type="primary" @click="setLaserHorizontal" >水平到位</el-button>
+                        <el-button size="mini" type="primary" @click="setLaserRotation" >旋转到位</el-button>
+                    </div>
+                    </div>
+                    <div class="stage-item" :class="{ 'stage-item--active': activeStageIndex === 1 }">
+                        <div class="stage-item__title"><b>基准/测试光轴</b></div>
+                        <div class="stage-item__desc">对应步骤：基准光轴、测试光轴</div>
+                        <div class="toolbar">
+                            <div>可见光源控制：</div>
+                            <el-button size="mini" :type="visibleLightOn ? 'success' : 'default'" @click="toggleVisibleLight">{{ visibleLightOn ? '已打开' : '已关闭' }}</el-button>
+                            <div style="width:220px;">
+                                <el-slider v-model="visibleLightPower" :min="0" :max="100" :step="1" show-input input-size="mini" :disabled="!visibleLightOn"></el-slider>
+                            </div>
+                            <el-button size="mini" type="primary" @click="setTargetHorizontal">靶标水平到位</el-button>
+                            <el-button size="mini" type="primary" @click="setTargetHorizontalZero">靶标水平归零</el-button>
+                        </div>
+                        <div class="toolbar">
+                            <div>红外黑体控制：</div>
+                            <el-button size="mini" :type="blackbodyOn ? 'success' : 'default'" @click="toggleBlackbody">{{ blackbodyOn ? '已打开' : '已关闭' }}</el-button>
+                            <div style="width:220px;">
+                                <el-slider v-model="blackbodyTemperature" :min="0" :max="100" :step="1" show-input input-size="mini" :disabled="!blackbodyOn"></el-slider>
+                            </div>
+                            <el-button size="mini" type="primary" @click="setTargetRotation">靶标旋转到位</el-button>
+                            <el-button size="mini" type="primary" @click="setTargetRotationZero">靶标旋转归零</el-button>
+                        </div>
+                        <div class="toolbar">靶标选择：</div>
+                        <div class="toolbar">
+                            <el-button size="mini" type="primary" @click="setTarget">四杆</el-button>
+                            <el-button size="mini" type="primary" @click="setTarget">USAF</el-button>
+                            <el-button size="mini" type="primary" @click="setTarget">十字</el-button>
+                            <el-button size="mini" type="primary" @click="setTarget">指示激光</el-button>
+                            <el-button size="mini" type="primary" @click="setTarget">4mm星点</el-button>
+                            <el-button size="mini" type="primary" @click="setTarget">0.5mm星点</el-button>
+                            <el-button size="mini" type="primary" @click="setTarget">0.2mm星点</el-button>
+                            <el-button size="mini" type="primary" @click="setTarget">0.1mm星点</el-button>
+                        </div>
+                        <div class="toolbar">靶标位置微调：</div>
+                        <div class="toolbar">
+                            <div>水平移动：</div>
+                            <el-input-number v-model="fineMoveX" :min="-999" :max="999" :step="1" size="mini"></el-input-number>
+                            <el-button size="mini" icon="el-icon-caret-right" @click="nudgeHorizontal">微调</el-button>
+                            <div style="width:12px;"></div>
+                            <div>靶轮旋转：</div>
+                            <el-input-number v-model="fineRotate" :min="-999" :max="999" :step="1" size="mini"></el-input-number>
+                            <el-button size="mini" icon="el-icon-refresh" @click="nudgeRotation">微调</el-button>
+                        </div>
+                    </div>
+                    <div class="stage-item stage-item--result" :class="{ 'stage-item--active': activeStageIndex === 2 }">
+                        <div class="stage-item__title"><b>测试结果</b></div>
+                        <div class="stage-item__desc">对应步骤：测试结果</div>
+                        <div class="toolbar">
+                            <div>基准光轴参数：</div>
+                            <div>像元大小(μm)：</div>
+                            <el-input-number v-model="basePixelSize" :min="0" :max="1000" :step="0.01" :precision="2" size="mini"></el-input-number>
+                            <div style="width:12px;"></div>
+                            <div>焦距(mm)：</div>
+                            <el-input-number v-model="baseFocalLength" :min="0" :max="100000" :step="0.1" :precision="2" size="mini"></el-input-number>
+                        </div>
+                        <div class="toolbar">
+                            <div>基准光轴偏移：</div>
+                            <div>像素(px)：X={{ baseOffsetPx.x }}, Y={{ baseOffsetPx.y }}</div>
+                            <div style="width:12px;"></div>
+                            <div>角度(°)：X={{ angleXText }}, Y={{ angleYText }}</div>
+                        </div>
+                        <div class="toolbar">
+                            <div>测试光轴参数：</div>
+                            <div>像元大小(μm)：</div>
+                            <el-input-number v-model="testPixelSize" :min="0" :max="1000" :step="0.01" :precision="2" size="mini"></el-input-number>
+                            <div style="width:12px;"></div>
+                            <div>焦距(mm)：</div>
+                            <el-input-number v-model="testFocalLength" :min="0" :max="100000" :step="0.1" :precision="2" size="mini"></el-input-number>
+                        </div>
+                        <div class="toolbar">
+                            <div>测试光轴偏移：</div>
+                            <div>像素(px)：X={{ testOffsetPx.x }}, Y={{ testOffsetPx.y }}</div>
+                            <div style="width:12px;"></div>
+                            <div>角度(°)：X={{ testAngleXText }}, Y={{ testAngleYText }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 下方：位于左下方，形成 L 形 -->
+            <div class="panel area-bottom">
+                <div class="panel__hd">图像信息显示区</div>
+                <div class="panel__bd">
+                    <el-descriptions size="small" :column="4" border>
+                        <el-descriptions-item label="宽度(px)">{{ imageInfo.width != null ? imageInfo.width : '-' }}</el-descriptions-item>
+                        <el-descriptions-item label="高度(px)">{{ imageInfo.height != null ? imageInfo.height : '-' }}</el-descriptions-item>
+                        <el-descriptions-item label="质心 X(px)">{{ imageInfo.centroidX != null ? imageInfo.centroidX : '-' }}</el-descriptions-item>
+                        <el-descriptions-item label="质心 Y(px)">{{ imageInfo.centroidY != null ? imageInfo.centroidY : '-' }}</el-descriptions-item>
+                    </el-descriptions>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var vm = new Vue({
+    el: '#app',
+    data: {
+        steps: [
+            { key: 'prepare', title: '测试说明' },
+            { key: 'coarse',  title: '粗调对准' },
+            { key: 'fine',    title: '基准光轴' },
+            { key: 'verify',  title: '测试光轴' },
+            { key: 'result',  title: '测试结果'}
+        ],
+        currentStep: 0,
+        // 相机相关
+        cameraSource: '/static/images/test_image.jpg',
+        cameraEnabled: true,
+        selectedCamera: 'cam1',
+        cameraList: [
+            { label: '相机1', value: 'cam1' },
+            { label: '相机2', value: 'cam2' }
+        ],
+        cameraMap: {
+            cam1: '/static/images/test_image.jpg',
+            cam2: '/static/images/test_image.jpg'
+        },
+        // 绘制/显示选项
+        drawCentroid: false,
+        drawCross: false,
+        showOriginal: true,
+        // 图像信息（由后端 socket 同步）
+        imageInfo: {
+            width: null,
+            height: null,
+            centroidX: null,
+            centroidY: null
+        },
+        // 指示激光控制
+        laserOn: false,
+        laserPower: 15,
+        visibleLightOn: false,
+        visibleLightPower: 15,
+        blackbodyOn: false,
+        blackbodyTemperature: 15,
+        // 微调
+        fineMoveX: 0,
+        fineRotate: 0,
+        // 基准光轴参数
+        basePixelSize: 0.00,
+        baseFocalLength: 0.0,
+        focalLength: 0.0,
+        // 基准光轴偏移（由后端相机提供像素偏移）
+        baseOffsetPx: { x: -1, y: -1 },
+        // 测试光轴参数/偏移
+        testPixelSize: 0.00,
+        testFocalLength: 0.0,
+        testOffsetPx: { x: -1, y: -1 }
+    },
+    computed: {
+        shownImageSrc(){
+            const base = this.cameraMap[this.selectedCamera] || this.cameraSource;
+            if(this.showOriginal) return base;
+            return base + (base.indexOf('?') > -1 ? '&' : '?') + 'mode=binary=1';
+        },
+        activeStageIndex(){
+            // 将顶部的 5 个步骤映射为侧栏的 3 个阶段
+            // 0: 粗调对准 (coarse)
+            // 1: 基准/测试光轴 (fine, verify)
+            // 2: 测试结果 (result)
+            const idx = this.currentStep;
+            if(idx <= 1){ // prepare(0) & coarse(1) => 高亮到粗调
+                return 0;
+            } else if(idx === 2 || idx === 3){ // fine(2), verify(3)
+                return 1;
+            } else { // result(4)
+                return 2;
+            }
+        },
+        // X/Y 方向角度（度）。像素转毫米：pixel * (μm/1000) -> mm；角度 = atan(mm / 焦距mm)
+        angleXDeg(){
+            const pxSizeUm = Number(this.basePixelSize) || 0;
+            const fMm = Number(this.baseFocalLength) || 0;
+            if(pxSizeUm <= 0 || fMm <= 0) return 0;
+            const dxMm = (Number(this.baseOffsetPx.x) || 0) * pxSizeUm / 1000.0;
+            return Math.atan(dxMm / fMm) * 180 / Math.PI;
+        },
+        angleYDeg(){
+            const pxSizeUm = Number(this.basePixelSize) || 0;
+            const fMm = Number(this.baseFocalLength) || 0;
+            if(pxSizeUm <= 0 || fMm <= 0) return 0;
+            const dyMm = (Number(this.baseOffsetPx.y) || 0) * pxSizeUm / 1000.0;
+            return Math.atan(dyMm / fMm) * 180 / Math.PI;
+        },
+        angleXText(){ return this.angleXDeg.toFixed(3); },
+        angleYText(){ return this.angleYDeg.toFixed(3); },
+        // 测试光轴角度文本
+        testAngleXDeg(){
+            const pxSizeUm = Number(this.testPixelSize) || 0;
+            const fMm = Number(this.testFocalLength) || 0;
+            if(pxSizeUm <= 0 || fMm <= 0) return 0;
+            const dxMm = (Number(this.testOffsetPx.x) || 0) * pxSizeUm / 1000.0;
+            return Math.atan(dxMm / fMm) * 180 / Math.PI;
+        },
+        testAngleYDeg(){
+            const pxSizeUm = Number(this.testPixelSize) || 0;
+            const fMm = Number(this.testFocalLength) || 0;
+            if(pxSizeUm <= 0 || fMm <= 0) return 0;
+            const dyMm = (Number(this.testOffsetPx.y) || 0) * pxSizeUm / 1000.0;
+            return Math.atan(dyMm / fMm) * 180 / Math.PI;
+        },
+        testAngleXText(){ return this.testAngleXDeg.toFixed(3); },
+        testAngleYText(){ return this.testAngleYDeg.toFixed(3); }
+    },
+    methods: {
+        nextStep(){ if(this.currentStep < this.steps.length - 1){ this.currentStep += 1; } },
+        prevStep(){ if(this.currentStep > 0){ this.currentStep -= 1; } },
+        openCameraSettings(){
+            this.$message({ type: 'info', message: '打开设置' });
+        },
+        initSocket(){
+            // 预留：建立 socket 连接并接收图像与信息
+        },
+        handleSocketImage(payload){
+            // 预留：解析 payload，设置 cameraSource 与 imageInfo
+            // this.cameraSource = payload.imageUrlOrData;
+            // this.updateImageInfo({ width: payload.width, height: payload.height, centroidX: payload.cx, centroidY: payload.cy });
+            // this.baseOffsetPx = { x: payload.baseOffsetX, y: payload.baseOffsetY };
+            // this.testOffsetPx = { x: payload.testOffsetX, y: payload.testOffsetY };
+        },
+        updateImageInfo(info){
+            this.imageInfo = Object.assign({}, this.imageInfo, info);
+        },
+        setLaserHorizontal(){
+            // 预留：发送水平到位指令
+            this.$message.success('指示激光：水平到位');
+        },
+        setLaserRotation(){
+            // 预留：发送旋转到位指令
+            this.$message.success('指示激光：旋转到位');
+        },
+        setTargetHorizontalZero(){
+            // 预留：发送水平归零指令
+            this.$message.success('靶标水平归零');
+        },
+        setTargetRotationZero(){
+            // 预留：发送旋转归零指令
+            this.$message.success('靶标旋转归零');
+        },
+        setTargetHorizontal(){
+            // 预留：发送水平到位指令
+            this.$message.success('靶标水平到位');
+        },
+        setTargetRotation(){
+            // 预留：发送旋转到位指令
+            this.$message.success('靶标旋转到位');
+        },
+        toggleLaser(){
+            this.laserOn = !this.laserOn;
+            // 预留：发送开/关指令
+            this.$message({ type: this.laserOn ? 'success' : 'info', message: this.laserOn ? '已打开' : '已关闭' });
+        },
+        toggleVisibleLight(){
+            this.visibleLightOn = !this.visibleLightOn;
+            // 预留：发送开/关指令
+            this.$message({ type: this.visibleLightOn ? 'success' : 'info', message: this.visibleLightOn ? '已打开' : '已关闭' });
+        },
+        toggleBlackbody(){
+            this.blackbodyOn = !this.blackbodyOn;
+            // 预留：发送开/关指令
+            this.$message({ type: this.blackbodyOn ? 'success' : 'info', message: this.blackbodyOn ? '已打开' : '已关闭' });
+        },
+        nudgeHorizontal(){
+            // 预留：发送水平微调指令（fineMoveX）
+            this.$message.success('水平微调：' + this.fineMoveX);
+        },
+        nudgeRotation(){
+            // 预留：发送旋转微调指令（fineRotate）
+            this.$message.success('旋转微调：' + this.fineRotate);
+        },
+        setTarget(){
+            // 预留：发送靶标选择指令
+            this.$message.success('靶标选择：' + this.target);
+        }
+    },
+    mounted(){
+        this.initSocket();
+    }
+});
+</script>
+</body>
+</html>

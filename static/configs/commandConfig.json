@@ -1,0 +1,26 @@
+{
+  "light_source": {
+    "set_indicator_laser_power": "f*{power:04d}@",
+    "set_visible_light_power": "f*{light:04d}!",
+    "set_blackbody_temperature": "f*{temperature:06d}#"
+  },
+  "three_axis_motor": {
+    "set_horizontal_axis_pos_zero":"f/1aM1Z300000R\r",
+    "set_vertical_axis_pos_zero":"f/1aM2Z300000R\r",
+    "set_rotation_axis_pos_zero":"f/1aM3Z300000R\r",
+    "set_horizontal_axis_pos":"f/1aM1B{pos}R\r",
+    "set_vertical_axis_pos":"f/1aM2B{pos}R\r",
+    "set_rotation_axis_pos":"f/1aM3B{pos}R\r",
+    "set_horizontal_axis_forword_move":"f/1aM1C{distance}R\r",
+    "set_horizontal_axis_backword_move":"f/1aM1E{distance}R\r",
+    "set_rotation_axis_forword_rotate":"f/1aM3C{angle}R\r",
+    "set_rotation_axis_backword_rotate":"f/1aM3E{angle}R\r"
+  },
+  "delay_module": {
+    "open": "h5a ad 01 00 ae",
+    "close": "h5a ad 00 00 ad",
+    "delay_time_add_4ns": "h5a ac 0a 00 b6"
+  }
+}
+
+

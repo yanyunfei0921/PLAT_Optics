@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- JS 引入（与 index/login 保持一致） -->
+    <script type="text/javascript" src="/static/jsscripts/vue.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/axios.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/elementui/lib-master/index.js"></script>
+
+    <!-- 样式引入 -->
+    <link rel="stylesheet" href="/static/jsscripts/elementui/lib-master/theme-chalk/index.css">
+
+    <style>
+        html{ height:calc(100%); }
+        body{ background:#f5f7fa; }
+        .page{ padding:16px; }
+        .toolbar{ display:flex; gap:8px; align-items:center; }
+        .tag-bar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+        .card{ margin-bottom:12px; }
+        .device-title{ font-weight:600; }
+        .row-meta{ color:#606266; font-size:13px; }
+        .row-meta span{ margin-right:16px; }
+        .op-buttons{ display:flex; gap:8px; align-items:center; }
+        .meta-block{ display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
+    </style>
+
+    <title>串口设置</title>
+</head>
+<body>
+    <div id="app" class="page">
+        <el-card class="card" shadow="never">
+            <div slot="header" class="clearfix">
+                <span class="device-title">串口连接控制</span>
+                <div style="float:right" class="toolbar">
+                    <el-button type="primary" size="mini" icon="el-icon-link" @click="connectAll">连接所有</el-button>
+                    <el-button size="mini" icon="el-icon-refresh-left" @click="disconnectAll">断开所有</el-button>
+                    <el-button type="warning" size="mini" icon="el-icon-document" @click="saveAll">保存配置</el-button>
+                </div>
+            </div>
+            <div class="tag-bar">
+                <span style="color:#909399">串口连接概览：</span>
+                <el-tag v-for="d in devices" :key="d.key" :type="d.connected? 'success':'info'" effect="plain">{{ d.cnName }}</el-tag>
+            </div>
+        </el-card>
+
+        <!-- 动态设备列表 -->
+        <el-card v-for="device in devices" :key="device.key" class="card" shadow="never">
+            <div slot="header" class="clearfix">
+                <span class="device-title">设备：{{ device.cnName }} <span class="row-meta">（{{ getPortLabel(device.key) }}）</span></span>
+                <div style="float:right" class="op-buttons">
+                    <el-link type="primary" :underline="false" icon="el-icon-edit" @click="editDevice(device.key)">编辑</el-link>
+                    <el-dropdown @command="onCommandSelect">
+                        <span class="el-dropdown-link" style="cursor:pointer;color:#909399">
+                            测试指令<i class="el-icon-arrow-down el-icon--right"></i>
+                        </span>
+                        <el-dropdown-menu slot="dropdown">
+                            <el-dropdown-item 
+                                v-for="cmd in getDeviceCommandList(device.key)" 
+                                :key="cmd.key" 
+                                :command="{ device: device.key, cmd: cmd.key }">
+                                {{ cmd.label }}
+                            </el-dropdown-item>
+                            <el-dropdown-item v-if="getDeviceCommandList(device.key).length===0" disabled>无可用指令</el-dropdown-item>
+                        </el-dropdown-menu>
+                    </el-dropdown>
+                    <el-button size="mini" :type="isConnected(device.key)? 'danger':'success'" @click="toggleConnect(device.key)">
+                        {{ isConnected(device.key)? '断开':'连接' }}
+                    </el-button>
+                </div>
+            </div>
+            <div class="meta-block">
+                <span>波特率: <b>{{ cfg(device.key).baudrate }}</b></span>
+                <span>数据位: <b>{{ cfg(device.key).dataBits }}</b></span>
+                <span>停止位: <b>{{ cfg(device.key).stopBits }}</b></span>
+                <span>校验位: <b>{{ cfg(device.key).parity }}</b></span>
+                <span>超时(ms): <b>{{ cfg(device.key).timeout }}</b></span>
+            </div>
+        </el-card>
+
+        <!-- 指令参数弹窗 -->
+        <el-dialog 
+            title="填写指令参数" 
+            :visible.sync="paramDialogVisible" 
+            width="500px"
+            :close-on-click-modal="false">
+            <div v-if="currentCommandMeta">
+                <div style="margin-bottom:8px;color:#909399">{{ currentCommandMeta.description || ('指令：' + currentCommandMeta.key) }}</div>
+                <el-form :model="paramForm" label-width="120px">
+                    <el-form-item v-for="p in (currentCommandMeta.params||[])" :key="p" :label="p">
+                        <el-input v-model="paramForm[p]" autocomplete="off"></el-input>
+                    </el-form-item>
+                </el-form>
+            </div>
+            <div slot="footer" class="dialog-footer">
+                <el-button @click="paramDialogVisible=false">取消</el-button>
+                <el-button type="primary" :loading="sending" @click="executeCurrentCommand">执行</el-button>
+            </div>
+        </el-dialog>
+
+        <!-- 编辑配置弹窗 -->
+        <el-dialog 
+            title="编辑串口配置" 
+            :visible.sync="editDialogVisible" 
+            width="600px"
+            :close-on-click-modal="false">
+            <el-form :model="editForm" label-width="120px" ref="editForm">
+                <el-form-item label="设备名称">
+                    <el-input v-model="editForm.cnName" disabled></el-input>
+                </el-form-item>
+                <el-form-item label="串口号">
+                    <el-select v-model="editForm.port" placeholder="请选择串口号" style="width:100%">
+                        <el-option v-for="port in availablePorts" :key="port" :label="port" :value="port"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="波特率">
+                    <el-select v-model="editForm.baudrate" placeholder="请选择波特率" style="width:100%">
+                        <el-option label="9600" :value="9600"></el-option>
+                        <el-option label="19200" :value="19200"></el-option>
+                        <el-option label="38400" :value="38400"></el-option>
+                        <el-option label="57600" :value="57600"></el-option>
+                        <el-option label="115200" :value="115200"></el-option>
+                        <el-option label="230400" :value="230400"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="数据位">
+                    <el-select v-model="editForm.dataBits" placeholder="请选择数据位" style="width:100%">
+                        <el-option label="8" :value="8"></el-option>
+                        <el-option label="7" :value="7"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="停止位">
+                    <el-select v-model="editForm.stopBits" placeholder="请选择停止位" style="width:100%">
+                        <el-option label="1" :value="1"></el-option>
+                        <el-option label="1.5" :value="1.5"></el-option>
+                        <el-option label="2" :value="2"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="校验位">
+                    <el-select v-model="editForm.parity" placeholder="请选择校验位" style="width:100%">
+                        <el-option label="None" value="None"></el-option>
+                        <el-option label="Even" value="Even"></el-option>
+                        <el-option label="Odd" value="Odd"></el-option>
+                        <el-option label="Mark" value="Mark"></el-option>
+                        <el-option label="Space" value="Space"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="超时(ms)">
+                    <el-input-number v-model="editForm.timeout" :min="100" :max="10000" :step="100" style="width:100%"></el-input-number>
+                </el-form-item>
+            </el-form>
+            <div slot="footer" class="dialog-footer">
+                <el-button @click="editDialogVisible = false">取消</el-button>
+                <el-button type="primary" @click="saveEditForm">保存</el-button>
+            </div>
+        </el-dialog>
+    </div>
+
+    <script>
+        var vm = new Vue({
+            el: "#app",
+            data: {
+                // 设备列表（从后端加载）
+                devices: [],
+                // 串口参数（从后端加载）
+                configs: {},
+                // 指令配置（从静态配置加载）
+                commandsMap: {}, // { deviceKey: { cmdKey: templateStr } }
+                parsedCommands: {}, // { deviceKey: [ { key,label,template,params:[] } ] }
+                // 编辑弹窗相关
+                editDialogVisible: false,
+                editForm: {
+                    key: '',
+                    cnName: '',
+                    port: '',
+                    baudrate: 9600,
+                    dataBits: 8,
+                    stopBits: 1,
+                    parity: 'None',
+                    timeout: 1000
+                },
+                availablePorts: ['COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'COM10', 'COM11', 'COM12', 'COM13', 'COM14', 'COM15', 'COM16', 'COM17', 'COM18', 'COM19', 'COM20'],
+                // 指令参数弹窗
+                paramDialogVisible: false,
+                currentDeviceKey: '',
+                currentCommandKey: '',
+                currentCommandMeta: null,
+                paramForm: {},
+                sending: false
+            },
+            created() {
+                this.loadConfig();
+                this.loadCommands();
+            },
+            methods: {
+                // 加载配置
+                loadConfig() {
+                    axios.get('/api/serial-config')
+                        .then(response => {
+                            if (response.data.success) {
+                                const data = response.data.data;
+                                this.devices = data.devices || [];
+                                this.configs = data.configs || {};
+                                // 加载完配置后刷新一次连接状态
+                                this.refreshStatus();
+                            } else {
+                                this.$message.error('加载配置失败: ' + response.data.message);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('加载配置失败:', error);
+                            this.$message.error('加载配置失败');
+                        });
+                },
+                // 刷新连接状态
+                refreshStatus(){
+                    const keys = (this.devices || []).map(d => d.key);
+                    if(!keys.length){ return; }
+                    axios.post('/api/serial/status', keys)
+                        .then(res => {
+                            if(res.data && res.data.success){
+                                const status = res.data.status || {};
+                                this.devices.forEach(d => {
+                                    if(typeof status[d.key] !== 'undefined'){
+                                        this.$set(d, 'connected', !!status[d.key]);
+                                    }
+                                })
+                            }
+                        })
+                        .catch(err => {
+                            console.warn('刷新状态失败', err);
+                        })
+                },
+                // 保存配置
+                saveConfig() {
+                    const data = {
+                        devices: this.devices,
+                        configs: this.configs
+                    };
+                    axios.post('/api/serial-config', data)
+                        .then(response => {
+                            if (response.data.success) {
+                                this.$message.success('配置保存成功');
+                            } else {
+                                this.$message.error('保存失败: ' + response.data.message);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('保存配置失败:', error);
+                            this.$message.error('保存配置失败');
+                        });
+                },
+                // 工具方法
+                cfg(key){ return this.configs[key] || {}; },
+                findDevice(key){ return this.devices.find(d => d.key===key) || {}; },
+                isConnected(key){ const d=this.findDevice(key); return !!d.connected; },
+                getPortLabel(key){ const d=this.findDevice(key); return d.port? d.port: '未配置'; },
+                // 指令相关
+                loadCommands(){
+                    axios.get('/static/configs/commandConfig.json')
+                        .then(res => {
+                            if(res && res.data){
+                                this.commandsMap = res.data || {};
+                                this.buildParsedCommands();
+                            }
+                        })
+                        .catch(err => { console.warn('加载指令配置失败', err); })
+                },
+                buildParsedCommands(){
+                    const result = {};
+                    Object.keys(this.commandsMap || {}).forEach(deviceKey => {
+                        const cmds = this.commandsMap[deviceKey] || {};
+                        const list = Object.keys(cmds).map(k => {
+                            const tpl = cmds[k];
+                            const params = this.extractParamsFromTemplate(tpl);
+                            return { key: k, label: k, template: tpl, params };
+                        });
+                        result[deviceKey] = list;
+                    })
+                    this.parsedCommands = result;
+                },
+                extractParamsFromTemplate(template){
+                    if(typeof template !== 'string'){ return []; }
+                    // 去掉前缀 f/h
+                    let body = template;
+                    if(body.startsWith('f') || body.startsWith('h')){ body = body.slice(1); }
+                    // 匹配花括号中的参数名：{name} 或 {name:fmt}
+                    const re = /\{\s*([a-zA-Z_][a-zA-Z0-9_]*)[^}]*\}/g;
+                    const set = new Set();
+                    let m;
+                    while((m = re.exec(body))){ set.add(m[1]); }
+                    return Array.from(set);
+                },
+                getDeviceCommandList(deviceKey){
+                    return (this.parsedCommands[deviceKey] || []).slice();
+                },
+                onCommandSelect(payload){
+                    const device = payload.device;
+                    const cmd = payload.cmd;
+                    const metaList = this.getDeviceCommandList(device);
+                    const meta = metaList.find(i => i.key === cmd);
+                    if(!meta){ this.$message.warning('未找到指令'); return; }
+                    this.currentDeviceKey = device;
+                    this.currentCommandKey = cmd;
+                    this.currentCommandMeta = meta;
+                    if(meta.params && meta.params.length){
+                        // 打开参数弹窗
+                        const init = {};
+                        meta.params.forEach(p => { init[p] = ''; });
+                        this.paramForm = init;
+                        this.paramDialogVisible = true;
+                    }else{
+                        // 直接执行
+                        this.doSendCommand(device, cmd, {});
+                    }
+                },
+                executeCurrentCommand(){
+                    if(!this.currentDeviceKey || !this.currentCommandKey){ return; }
+                    this.doSendCommand(this.currentDeviceKey, this.currentCommandKey, this.paramForm || {});
+                },
+                doSendCommand(device, cmd, params){
+                    // 在前端将数字字符串转成数字类型
+                    const coerceNumber = (v) => {
+                        if (typeof v !== 'string') return v;
+                        const s = v.trim();
+                        if (/^-?\d+$/.test(s)) return parseInt(s, 10);
+                        if (/^-?\d*\.\d+$/.test(s)) return parseFloat(s);
+                        return v;
+                    };
+                    const safeParams = Object.keys(params || {}).reduce((acc, k) => {
+                        acc[k] = coerceNumber(params[k]);
+                        return acc;
+                    }, {});
+                    this.sending = true;
+                    axios.post('/api/command/send', {
+                        device: device,
+                        cmd: cmd,
+                        params: safeParams,
+                        wait_response: false,
+                        timeout: 2.0
+                    }).then(res => {
+                        this.sending = false;
+                        this.paramDialogVisible = false;
+                        const ok = res && res.data && res.data.success;
+                        if(ok){
+                            this.$message.success('指令发送成功');
+                        }else{
+                            const msg = (res && res.data && res.data.message) || '发送失败';
+                            this.$message.error(msg);
+                        }
+                    }).catch(err => {
+                        this.sending = false;
+                        this.$message.error('指令发送异常');
+                        console.error('send cmd error', err);
+                    })
+                },
+
+                // 关键按钮
+                connectAll(){
+                    console.log('connectAll');
+                    const payload = (this.devices||[]).map(d => ({
+                        key: d.key,
+                        port: d.port,
+                        baudrate: (this.cfg(d.key).baudrate)||9600,
+                        dataBits: (this.cfg(d.key).dataBits)||8,
+                        stopBits: (this.cfg(d.key).stopBits)||1,
+                        parity: (this.cfg(d.key).parity)||'None',
+                        timeout: (this.cfg(d.key).timeout)||1000,
+                    }));
+                    axios.post('/api/serial/connect-all', payload)
+                        .then(res => {
+                            if(res.data && res.data.success){
+                                const results = res.data.results || {};
+                                this.devices.forEach(d => {
+                                    const r = results[d.key];
+                                    if(r && r.success){ this.$set(d, 'connected', true); }
+                                })
+                                this.$message.success('已尝试连接所有设备');
+                            }else{
+                                this.$message.error('批量连接失败: ' + (res.data && res.data.message || ''));
+                            }
+                        })
+                        .catch(err => {
+                            console.error('批量连接异常', err);
+                            this.$message.error('批量连接异常');
+                        })
+                },
+                disconnectAll(){
+                    console.log('disconnectAll');
+                    axios.post('/api/serial/disconnect-all', {})
+                        .then(res => {
+                            if(res.data && res.data.success){
+                                this.devices.forEach(d => { this.$set(d, 'connected', false); })
+                                this.$message.success('已断开所有设备');
+                            }else{
+                                this.$message.error('批量断开失败: ' + (res.data && res.data.message || ''))
+                            }
+                        })
+                        .catch(err => {
+                            console.error('批量断开异常', err);
+                            this.$message.error('批量断开异常');
+                        })
+                },
+                saveAll(){
+                    this.saveConfig();
+                },
+                editDevice(key){
+                    const device = this.findDevice(key);
+                    const config = this.cfg(key);
+                    this.editForm = {
+                        key: device.key,
+                        cnName: device.cnName,
+                        port: device.port,
+                        baudrate: config.baudrate || 9600,
+                        dataBits: config.dataBits || 8,
+                        stopBits: config.stopBits || 1,
+                        parity: config.parity || 'None',
+                        timeout: config.timeout || 1000
+                    };
+                    this.editDialogVisible = true;
+                },
+                saveEditForm() {
+                    // 更新设备信息
+                    const device = this.findDevice(this.editForm.key);
+                    if (device) {
+                        device.port = this.editForm.port;
+                    }
+                    // 更新配置信息
+                    this.configs[this.editForm.key] = {
+                        baudrate: this.editForm.baudrate,
+                        dataBits: this.editForm.dataBits,
+                        stopBits: this.editForm.stopBits,
+                        parity: this.editForm.parity,
+                        timeout: this.editForm.timeout
+                    };
+                    // 关闭弹窗并保存
+                    this.editDialogVisible = false;
+                    this.saveConfig();
+                },
+                testDevice(key){
+                    console.log('testDevice', key);
+                    // TODO: 下发测试命令，读取返回
+                },
+                toggleConnect(key){
+                    console.log('toggleConnect', key);
+                    const d = this.findDevice(key);
+                    if(!d){ return; }
+                    if(this.isConnected(key)){
+                        // 断开
+                        axios.post('/api/serial/disconnect', { deviceKey: key })
+                            .then(res => {
+                                if(res.data && res.data.success){
+                                    this.$set(d, 'connected', false);
+                                    this.$message.success('串口设备断开成功');
+                                }else{
+                                    this.$message.error('串口设备断开失败: ' + (res.data && res.data.message || ''))
+                                }
+                            })
+                            .catch(err => {
+                                console.error('断开异常', err);
+                                this.$message.error('断开异常');
+                            })
+                    }else{
+                        // 连接
+                        // 检查必要参数
+                        const cfg = this.cfg(key) || {};
+                        if(!d.port){
+                            this.$message.warning('请先为设备配置串口号');
+                            return;
+                        }
+                        const payload = {
+                            deviceKey: key,
+                            port: d.port,
+                            baudrate: cfg.baudrate || 9600,
+                            dataBits: cfg.dataBits || 8,
+                            stopBits: cfg.stopBits || 1,
+                            parity: cfg.parity || 'None',
+                            timeout: cfg.timeout || 1000
+                        };
+                        axios.post('/api/serial/connect', payload)
+                            .then(res => {
+                                if(res.data && res.data.success){
+                                    this.$set(d, 'connected', true);
+                                    this.$message.success('串口设备连接成功');
+                                }else{
+                                    this.$message.error('串口设备连接失败: ' + (res.data && res.data.message || ''))
+                                }
+                            })
+                            .catch(err => {
+                                console.error('连接异常', err);
+                                this.$message.error('连接异常');
+                            })
+                    }
+                },
+            }
+        })
+    </script>
+</body>
+</html>
+
+

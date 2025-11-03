@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- JS文件引入 -->
+    <script type="text/javascript" src="/static/jsscripts/vue.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/axios.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/elementui/lib-master/index.js"></script>
+
+    <!-- 样式设置 -->
+    <link rel="stylesheet" href="/static/jsscripts/elementui/lib-master/theme-chalk/index.css">
+    <!--link rel="icon" type="image/x-icon" href="/static/images/favicon.ico"-->
+    <style>
+        html{
+            height: calc(100%);
+        }
+        body{
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        iframe {
+            margin-top: 0px;
+            margin-left: 0px;
+            border: medium none;
+            overflow: auto;
+            width: 98vw; 
+            height: 85vh; 
+            /* shadow: none, */
+        }
+        .el-card{
+            overflow-y: none; 
+            overflow-x: none;
+        }
+        .el-card__header{
+            padding-top: 0.5vh;
+            padding-left: 0.5vw;
+            margin: 0px;
+            color: white;
+        }
+        .el-card__body{
+            padding-top: 0.5vh;
+            padding-left: 0.5vw;
+            margin: 0px;
+            overflow-y: none; 
+            overflow-x: none;
+        }
+        /* ===== 提取的布局样式 ===== */
+        .app-root{ height:100vh; overflow:hidden; }
+        .layout-container{ height:100%; overflow:hidden; }
+        .topbar{ background:#ffffff; border-bottom:1px solid #ebeef5; display:flex; align-items:center; justify-content:space-between; }
+        .topbar-title{ font-size:18px; font-weight:600; color:#303133; }
+        .topbar-user{ color:#606266; }
+        .link-margin-left{ margin-left:12px; }
+        .menubar{ padding:0; background:#ffffff; border-bottom:1px solid #ebeef5; }
+        .menu-no-border{ border-bottom:none; }
+        .main-area{ padding:16px; height:calc(100% - 104px); overflow:hidden; background:#f5f7fa; box-sizing:border-box; }
+        .two-cols{ display:flex; gap:16px; height:100%; }
+        .left-panel{ flex:1; background:#ffffff; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .intro-image{ max-width:100%; max-height:100%; object-fit:contain; }
+        .right-panel{ flex:1; background:#ffffff; padding:16px; overflow:auto; }
+        .title-no-margin{ margin-top:0; }
+    </style>
+    
+    <title>光电测试系统软件平台</title>
+</head>
+
+<body>
+    <div id="app" class="main app-root">
+        <el-container class="layout-container">
+            <el-header height="60px" class="topbar">
+                <div class="topbar-title">光电测试系统软件平台</div>
+                <div class="topbar-user">
+                    用户：{{ usrname }}
+                    <el-link type="primary" class="link-margin-left" @click="changeUsrName">切换</el-link>
+                </div>
+            </el-header>
+            <el-header height="44px" class="menubar">
+                <el-menu mode="horizontal" default-active="index"
+                        background-color="#ffffff"
+                        text-color="#303133" active-text-color="#409EFF"
+                        class="menu-no-border" @select="handleSelect">
+                    <el-menu-item index="index">首页</el-menu-item>
+                    <el-menu-item index="serialSettingUrl">串口设置</el-menu-item>
+                    <el-menu-item index="opticalAxisUrl">光轴一致性测试</el-menu-item>
+                    <el-menu-item index="dynamicTargetUrl">动态目标模拟</el-menu-item>
+                    <el-menu-item index="laserDistanceUrl">激光模拟测距</el-menu-item>
+                    <el-menu-item index="laserDistanceUrl">激光能量测试</el-menu-item>
+                    <el-menu-item index="testRecordUrl">测试记录</el-menu-item>
+                </el-menu>
+            </el-header>
+            <el-main class="main-area" v-if="!objSrc">
+                <div class="two-cols">
+                    <div class="left-panel">
+                        <img src="/static/images/system_intro.png" alt="系统介绍" class="intro-image" />
+                    </div>
+                    <div class="right-panel">
+                        <h2 class="title-no-margin">光电测试系统软件平台使用说明</h2>
+                        <p>本平台用于支撑光电测试相关实验流程与数据记录，提供基础的设备管理、测试任务组织与结果查看能力。请在进行任何操作前，确认设备连接与安全注意事项。</p>
+                        <p>使用前请阅读操作规程：避免直视激光，佩戴必要的防护器材；在测试区域保持整洁，确保电缆与设备稳固；进行能量或测距测试时，注意周围人员与反射面，防止误伤。</p>
+                        <p>若首次使用，建议先进入“串口设置”完成与设备的通信配置，然后根据需要选择“光轴一致性测试”“动态目标模拟”“激光模拟测距”“激光能量测试”等功能模块。</p>
+                        <p>测试完成后，可在“测试记录”查看与导出报告。出现连接或权限问题时，请联系管理员或重新登录后重试。</p>
+                        <p>以上文字仅为占位示例，用于演示右侧内容区域可单独滚动的效果。请根据实际业务替换为正式说明文档。</p>
+                        <p>为了展示滚动效果，附加一些额外文本：当内容高度超过区域高度时，可以在此区域内滚动，而页面整体保持固定，不发生全局滚动。</p>
+                        <p>更多说明文本……更多说明文本……更多说明文本……更多说明文本……更多说明文本……更多说明文本……更多说明文本……更多说明文本……</p>
+                    </div>
+                </div>
+            </el-main>
+            <div v-else style="height: 85vh; width: 98vw;">
+                <iframe :src="objSrc" style="height: 85vh; width: 98vw;"></iframe>
+            </div>
+        </el-container>
+    </div>
+
+    <script>
+        var vm = new Vue({
+            el: "#app",
+            data: {
+                usrname: "未登录",
+                admin: "admin",
+                objSrc: "",
+
+                urlConfig: {
+                    serialSettingUrl:"/serialSetting",
+                    opticalAxisUrl:"/opticalAxis",
+                    laserDistanceUrl:"/laserDistance",
+                    dynamicTargetUrl:"/dynamicTarget",
+                    testRecordUrl:"/testRecord"
+                },
+            },
+            created() {
+                this.resolveUrl();
+            },
+            methods: {
+                resolveUrl(){
+                    try{
+                        const n = window.sessionStorage.getItem('usrname') || '';
+                        if(n){
+                            this.usrname = n;
+                            return;
+                        }
+                    }catch(e){}
+                    this.usrname = "未登录";
+                    window.location.href = "/login";
+                },
+                changeUsrName(){
+                    try{ window.sessionStorage.removeItem('usrname'); }catch(e){}
+                    window.location.href = "/login";
+                },
+                handleSelect(key, keyPath) {
+                    if (key === 'index') {
+                        this.objSrc = '';
+                        return;
+                    }
+                    this.objSrc = this.urlConfig[key];
+                    console.log(this.objSrc);
+                    this.$forceUpdate();
+                },
+
+            }
+        })
+    </script>
+
+</body>
+</html>
