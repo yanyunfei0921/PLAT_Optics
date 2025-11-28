@@ -1,7 +1,9 @@
 import os
 import json
 from flask import Flask, render_template, request, jsonify
+from flask_socketio import SocketIO, emit
 from core.commandService import command_service
+from core.cameraService import camSer1, camSer2
 serial_service = command_service._serial
 app = Flask(
     __name__,
@@ -16,6 +18,27 @@ app.jinja_env.variable_end_string = '>> --HUA-- ??'
 
 STATIC_DIR = rf'{os.getcwd()}/static'
 CONFIG_DIR = rf'{os.getcwd()}/static/configs'
+
+# ========================Socket.IO 初始化===============================
+socketio = SocketIO(app, cors_allowed_origins='*')
+
+# 记录每个客户端的推流线程与相机选择
+_client_stream_threads = {}
+_client_camera_ids = {}
+
+def _get_camera_by_id(camera_id):
+    try:
+        cam_id_int = int(camera_id)
+    except Exception:
+        cam_id_int = 1
+    return camSer1 if cam_id_int == 1 else camSer2
+
+def _stream_frames_to_client(camera_service, sid):
+    while camera_service.running:
+        frame_data = camera_service.getLatestFrame()
+        if frame_data:
+            socketio.emit('camera_frame', frame_data, room=sid)
+        socketio.sleep(0.03)
 
 if not os.path.exists(STATIC_DIR):
     os.mkdir(STATIC_DIR)
@@ -219,5 +242,59 @@ def get_all_commands():
     commands = command_service.list_commands()  # 返回的是一个Dict
     return jsonify({'success': True, 'commands': commands})
 
+# =======================
+
+
+# =========================Socket.IO 事件============================================
+@socketio.on('camera_connect')
+def handle_camera_connect(data):
+    """连接并开始采集，data 需包含 cameraId: 1 或 2"""
+    try:
+        camera_id = data.get('cameraId', 1)
+        cam = _get_camera_by_id(camera_id)
+
+        # 初始化并打开设备（包含开始抓取）
+        if not cam.initCamera():
+            emit('camera_error', {'success': False, 'message': '初始化相机失败', 'cameraId': int(camera_id)}, room=request.sid)
+            return
+        if not cam.connectAndOpenCamera():
+            emit('camera_error', {'success': False, 'message': '连接或开始采集失败', 'cameraId': int(camera_id)}, room=request.sid)
+            return
+
+        # 记录客户端选择的相机
+        _client_camera_ids[request.sid] = int(camera_id)
+
+        # 启动向该客户端推流的后台任务
+        if request.sid in _client_stream_threads:
+            # 已有线程则跳过或覆盖
+            pass
+        _client_stream_threads[request.sid] = socketio.start_background_task(_stream_frames_to_client, cam, request.sid)
+
+        emit('camera_connected', {'success': True, 'cameraId': int(camera_id)}, room=request.sid)
+    except Exception as e:
+        emit('camera_error', {'success': False, 'message': str(e)}, room=request.sid)
+
+
+@socketio.on('camera_disconnect')
+def handle_camera_disconnect(data):
+    """停止采集并断开连接，data 可包含 cameraId（可选，不传则用该连接最近一次选择）"""
+    try:
+        camera_id = data.get('cameraId') if isinstance(data, dict) else None
+        if camera_id is None:
+            camera_id = _client_camera_ids.get(request.sid)
+
+        cam = _get_camera_by_id(camera_id) if camera_id is not None else None
+        if cam is not None:
+            cam.closeAndDisconnectCamera()
+
+        # 清理该客户端记录
+        _client_camera_ids.pop(request.sid, None)
+        _client_stream_threads.pop(request.sid, None)
+
+        emit('camera_disconnected', {'success': True, 'cameraId': int(camera_id) if camera_id is not None else None}, room=request.sid)
+    except Exception as e:
+        emit('camera_error', {'success': False, 'message': str(e)}, room=request.sid)
+
+
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8090, debug=True)
+    socketio.run(app, host="127.0.0.1", port=8090, debug=True)

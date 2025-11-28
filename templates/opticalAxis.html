@@ -13,6 +13,9 @@
     <!-- 样式引入 -->
     <link rel="stylesheet" href="/static/jsscripts/elementui/lib-master/theme-chalk/index.css">
 
+    <!-- Socket引入 -->>
+    <script type="text/javascript" src="/static/jsscripts/socket.io.js"></script>
+
     <title>光轴对准</title>
 
     <style>
@@ -88,7 +91,7 @@
             margin: 0 auto;
         }
         .cam-viewport::before{ content:""; display:block; padding-top: var(--cam-aspect); }
-        .cam-viewport__media{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+        .cam-viewport__media{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display: block;}
         .cam-viewport__placeholder{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#c0c4cc; font-size:12px; }
         @media (max-width: 1366px){
             .camera-layout{ grid-template-columns: 1.2fr 760px; grid-template-rows: auto 100px; }
@@ -156,12 +159,10 @@
                 </div>
                 <div class="panel__bd panel__bd--cam">
                     <div class="cam-viewport">
-                        <template v-if="cameraEnabled && shownImageSrc">
-                            <img :src="shownImageSrc" alt="camera" class="cam-viewport__media">
-                        </template>
-                        <template v-else>
-                            <span class="cam-viewport__placeholder">4:3 预览占位</span>
-                        </template>
+                        <canvas ref="cameraCanvas" class="cam-viewport__media" v-show="cameraEnabled"></canvas>
+                        <div v-if="!cameraEnabled" class="cam-viewport__placeholder">
+                            <span>相机已关闭</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -279,6 +280,24 @@
 var vm = new Vue({
     el: '#app',
     data: {
+        // 测试箱相机相关变量
+        socket: null,
+        isConnected: false,
+        ctx: null,
+        canvas: null,
+        drawCentroid: false,
+        drawCross: false,
+        showOriginal: true,
+        imageInfo: {
+            width: null,
+            height: null,
+            centroidX: null,
+            centroidY: null
+        },
+        // 用于显示
+        centroidX: null,
+        centroidY: null,
+        // 进度条
         steps: [
             { key: 'prepare', title: '测试说明' },
             { key: 'coarse',  title: '粗调对准' },
@@ -289,26 +308,16 @@ var vm = new Vue({
         currentStep: 0,
         // 相机相关
         cameraSource: '/static/images/test_image.jpg',
-        cameraEnabled: true,
+        cameraEnabled: false,
         selectedCamera: 'cam1',
         cameraList: [
             { label: '相机1', value: 'cam1' },
-            { label: '相机2', value: 'cam2' }
+            { label: '相机2', value: 'cam2' },
+            { label: '相机3(预留)', value: 'cam3'}
         ],
         cameraMap: {
             cam1: '/static/images/test_image.jpg',
             cam2: '/static/images/test_image.jpg'
-        },
-        // 绘制/显示选项
-        drawCentroid: false,
-        drawCross: false,
-        showOriginal: true,
-        // 图像信息（由后端 socket 同步）
-        imageInfo: {
-            width: null,
-            height: null,
-            centroidX: null,
-            centroidY: null
         },
         // 指示激光控制
         laserOn: false,
@@ -332,11 +341,6 @@ var vm = new Vue({
         testOffsetPx: { x: -1, y: -1 }
     },
     computed: {
-        shownImageSrc(){
-            const base = this.cameraMap[this.selectedCamera] || this.cameraSource;
-            if(this.showOriginal) return base;
-            return base + (base.indexOf('?') > -1 ? '&' : '?') + 'mode=binary=1';
-        },
         activeStageIndex(){
             // 将顶部的 5 个步骤映射为侧栏的 3 个阶段
             // 0: 粗调对准 (coarse)
@@ -386,14 +390,143 @@ var vm = new Vue({
         testAngleXText(){ return this.testAngleXDeg.toFixed(3); },
         testAngleYText(){ return this.testAngleYDeg.toFixed(3); }
     },
+    watch:{
+        // 下拉框拉开自动断旧相机
+        selectedCamera(newVal, oldVal) {
+            if (this.cameraEnabled) {
+                if(oldVal) this.disconnectCamera(oldVal); // 传入旧值以断开特定ID
+                this.$nextTick(() => {
+                    this.connectCamera();
+                });
+            }
+        },
+        // 监听开关
+        cameraEnabled(newVal) {
+            if (newVal) {
+                this.connectCamera();
+            } else {
+                this.disconnectCamera(this.selectedCamera);
+            }
+        }
+    },
     methods: {
         nextStep(){ if(this.currentStep < this.steps.length - 1){ this.currentStep += 1; } },
         prevStep(){ if(this.currentStep > 0){ this.currentStep -= 1; } },
         openCameraSettings(){
             this.$message({ type: 'info', message: '打开设置' });
         },
+        getCameraIntId(camValue){
+            return {'cam1' : 1, 'cam2' : 2, 'cam3' : 3}[camValue] || 1;
+        },
+        connectCamera(){
+            if(!this.socket){
+                this.$message.error('Socket 服务未连接');
+                return;
+            }
+            if(!this.cameraEnabled) return;
+            const camId = this.getCameraIntId(this.selectedCamera);
+            console.log('正在请求连接相机 ID:', camId);
+            this.socket.emit('camera_connect', {cameraId: camId});
+        },
+        disconnectCamera(camValue){
+            const camId = this.getCameraIntId(camValue || thi.selectedCamera);
+            if(this.socket){
+                this.socket.emit('camera_disconnect',{cameraId: camId});
+            }
+            this.isConnected = false;
+            this.initCanvas();
+        },
+        initCanvas(){
+            this.canvas  = this.$refs.cameraCanvas;
+            if(this.canvas){
+                this.ctx = this.canvas.getContext('2d');
+                this.ctx.fillStyle = '#000';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.font = "20px Arial";
+                this.ctx.fillStyle = "#666";
+                this.ctx.textAlign = "center";
+                this.ctx.fillText("无信号", this.canvas.width/2, this.canvas.height/2);
+            }
+        },
         initSocket(){
-            // 预留：建立 socket 连接并接收图像与信息
+            if(typeof io === 'undefined'){
+                console.log('未找到 socket.io.js');
+                return;
+            }
+            this.socket = io('http://127.0.0.1:8090');
+            // 连接socket
+            this.socket.on('connect',()=>{
+                console.log('Socket 连接成功');
+            });
+            //   断开socket
+            this.socket.on('disconnect', ()=>{
+                console.log('Socket 断开成功');
+                this.isConnected = flase;
+            });
+            // 连接相机
+            this.socket.on('camera_connected', (data) => {
+                if(data.success) {
+                    this.isConnected = true;
+                    this.$message.success('相机已连接，开始采集');
+                }
+            });
+            // 监听错误
+            this.socket.on('camera_error', (data) => {
+                this.$message.error(data.message || '相机错误');
+                this.isConnected = false;
+            });
+            // 接收图像
+            this.socket.on('camera_frame', (frameData) => {
+                this.handleNewFrame(frameData);
+            });
+        },
+        handleNewFrame(data){
+            if(!this.ctx || !this.cameraEnabled) return;
+            
+            this.imageInfo.width = data.width;
+            this.imageInfo.height = data.height;
+            this.imageInfo.centroidX = data.centroidX;
+            this.imageInfo.centroidY = data.centroidY;
+
+            if(this.canvas.width !== data.width || this.canvas.height !== data.height){
+                this.canvas.width = data.width;
+                this.canvas.height = data.height;
+            }
+
+            const img = new Image();
+            img.onload = () => {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+                if(data.centroidX !== null && data.centroidY !== null){
+                    this.centroidX = data.centroidX;
+                    this.centroidY = data.centroidY;
+                    this.drawCrosshair(data.centroidX, data.centroidY, data.width, data.height);
+                }
+            };
+            img.src = data.image;
+        },
+        drawCrosshair(realX, realY, realW, realH){
+            const scaleX = this.canvas.width / realW;
+            const scaleY = this.canvas.height  / realH;
+            const x = realX * scaleX;
+            const y = realY * scaleY;
+
+            this.ctx.beginPath();
+            this.ctx.strokeStyle = '#00FF00'; // 绿色十字
+            this.ctx.lineWidth = 1;
+            // 画横线
+            this.ctx.moveTo(0, y);
+            this.ctx.lineTo(this.canvas.width, y);
+            // 画竖线
+            this.ctx.moveTo(x, 0);
+            this.ctx.lineTo(x, this.canvas.height);
+            this.ctx.stroke();
+        },
+        drawCentroidPoint(x,y){
+            this.ctx.beginPath();
+            this.ctx.fillStyle = 'red';
+            this.ctx.arc(x, y, 5, 0, 2 * Math.PI);
+            this.ctx.fill();
         },
         handleSocketImage(payload){
             // 预留：解析 payload，设置 cameraSource 与 imageInfo
@@ -405,8 +538,27 @@ var vm = new Vue({
         updateImageInfo(info){
             this.imageInfo = Object.assign({}, this.imageInfo, info);
         },
-        setLaserHorizontal(){
+        sendCmd(device, cmd, params, wait_response = {}, successMsg = "指令发送成功"){
+            axios.post('/api/command/send',{
+                device: device,
+                cmd: cmd,
+                params: params,
+                wait_response: wait_response,
+                timeout: 1.0
+            }).then(res => {
+                if(res.data.success){
+                    this.$message.success(successMsg);
+                }
+                else{
+                    this.$message.error('指令发送失败' + res.data.message);
+                }
+            }).catch(err => {
+                this.$message.error('通信失败' + err);
+            })
+        },
+        setLaserHorizontal(targetPos){
             // 预留：发送水平到位指令
+            this.sendCmd('three_axis_motor', 'set_horizontal_axis_pos', {pos: targetPos}, false, "水平到位指令已发送");
             this.$message.success('指示激光：水平到位');
         },
         setLaserRotation(){
@@ -458,7 +610,13 @@ var vm = new Vue({
         }
     },
     mounted(){
+        this.initCanvas();
         this.initSocket();
+    },
+    beforeDestroy(){
+        if(this.socket){
+            this.socket.disconnect();
+        }
     }
 });
 </script>
