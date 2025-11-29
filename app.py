@@ -1,9 +1,13 @@
 import os
+import sys
 import json
+from typing import final
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
+sys.path.append(os.getenv('MVCAM_COMMON_RUNENV') + "/Samples/python/MvImport")
+from MvCameraControl_class import MvCamera  # type: ignore
+from core.cameraService import CameraService
 from core.commandService import command_service
-from core.cameraService import camSer1, camSer2
 serial_service = command_service._serial
 app = Flask(
     __name__,
@@ -26,6 +30,18 @@ socketio = SocketIO(app, cors_allowed_origins='*')
 _client_stream_threads = {}
 _client_camera_ids = {}
 
+# 初始化相机SDK
+try:
+    ret = MvCamera.MV_CC_Initialize()
+    if ret != 0:
+        print(f"SDK Init failed! ret[0x{ret:x}]")
+    else:
+        print("Camera SDK init success")
+except Exception as e:
+    print(f"SDK init Error: {e}")
+
+camSer1 = CameraService(0)
+camSer2 = CameraService(1)
 def _get_camera_by_id(camera_id):
     try:
         cam_id_int = int(camera_id)
@@ -218,7 +234,44 @@ def get_connection_status():
         return jsonify({'success': True, 'status': status})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
+# =========================================================================================
 
+# =========================cameraService api - camearConfig wr part========================
+@app.route('/api/camera-config', methods=['GET'])
+def get_camera_config():
+    """获取相机配置"""
+    config_path = os.path.join(CONFIG_DIR, 'cameraConfig.json')
+    try:
+        if not os.path.exists(config_path):
+            # 默认配置
+            default_config = {
+                "cameras": [
+                    {"id": 1, "name": "相机1", "ip": "192.168.1.10", "exposureTime": 5000, "frameRate": 30, "threshold": 128},
+                    {"id": 2, "name": "相机2", "ip": "192.168.1.11", "exposureTime": 5000, "frameRate": 30, "threshold": 128}
+                ]
+            }
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(default_config, f, ensure_ascii=False, indent=2)
+            return jsonify({'success': True, 'data': default_config})
+        
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        return jsonify({'success': True, 'data': config})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/camera-config', methods=['POST'])
+def save_camera_config():
+    """保存相机配置"""
+    config_path = os.path.join(CONFIG_DIR, 'cameraConfig.json')
+    try:
+        data = request.get_json()
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return jsonify({'success': True, 'message': '配置保存成功'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+# =========================================================================================
 
 # =========================commandService api==============================================
 @app.route('/api/command/send', methods=['POST'])
@@ -242,7 +295,7 @@ def get_all_commands():
     commands = command_service.list_commands()  # 返回的是一个Dict
     return jsonify({'success': True, 'commands': commands})
 
-# =======================
+# ==================================================================================
 
 
 # =========================Socket.IO 事件============================================
@@ -295,6 +348,107 @@ def handle_camera_disconnect(data):
     except Exception as e:
         emit('camera_error', {'success': False, 'message': str(e)}, room=request.sid)
 
+@socketio.on('camera_set_param')
+def handle_camera_set_param(data):
+    """
+    设置相机参数
+    data格式: {
+        'cameraId': 1, 
+        'type': 'exposureTime' | 'frameRate' | 'threshold' | 'gain', 
+        'value': 5000
+    }
+    """
+    try:
+        camera_id = data.get('cameraId', 1)
+        param_type = data.get('type')
+        value = data.get('value')
+        
+        cam = _get_camera_by_id(camera_id)
+        
+        # 检查相机是否已连接 (句柄是否存在)
+        if cam.cam is None:
+             emit('camera_error', {'success': False, 'message': f'相机{camera_id}未连接，无法设置参数'}, room=request.sid)
+             return
+            
+        success = False
+        message = ""
 
+        if param_type == 'exposureTime':
+            success = cam.setExpsureTime(float(value))
+            message = "设置曝光时间成功" if success else "设置曝光时间失败"
+        elif param_type == 'frameRate':
+            success = cam.setAcquisitionFrameRate(float(value))
+            message = "设置帧率成功" if success else "设置帧率失败"
+        elif param_type == 'gain':
+             success = cam.setGain(float(value))
+             message = "设置增益成功" if success else "设置增益失败"
+        elif param_type == 'threshold':
+            # 阈值是纯软件参数，不涉及SDK底层指令，直接设置类属性
+            cam.threshold = int(value)
+            success = True
+            message = "设置二值化阈值成功"
+        else:
+            message = f"未知参数类型: {param_type}"
+            success = False
+        
+        if success:
+            emit('camera_msg', {'success': True, 'message': message}, room=request.sid)
+        else:
+            emit('camera_error', {'success': False, 'message': message}, room=request.sid)
+
+    except Exception as e:
+        emit('camera_error', {'success': False, 'message': str(e)}, room=request.sid)
+
+
+@socketio.on('camera_get_param')
+def handle_camera_get_param(data):
+    """
+    获取相机参数
+    data格式: {
+        'cameraId': 1, 
+        'type': 'exposureTime' | 'frameRate' | 'threshold' | 'gain'
+    }
+    """
+    try:
+        camera_id = data.get('cameraId', 1)
+        param_type = data.get('type')
+        
+        cam = _get_camera_by_id(camera_id)
+        
+        # 阈值是本地变量，理论上不需要相机连接也能获取默认值，但为了统一逻辑，还是检查一下或直接返回类属性
+        if param_type == 'threshold':
+            value = cam.threshold
+            emit('camera_param_value', {'success': True, 'type': param_type, 'value': value, 'cameraId': camera_id}, room=request.sid)
+            return
+
+        # 其他参数需要调用SDK，必须确保相机已连接
+        if cam.cam is None:
+             emit('camera_error', {'success': False, 'message': f'相机{camera_id}未连接，无法获取参数'}, room=request.sid)
+             return
+
+        value = -1
+        
+        if param_type == 'exposureTime':
+            value = cam.getExpsureTime()
+        elif param_type == 'frameRate':
+            value = cam.getAcquisitionFrameRate()
+        elif param_type == 'gain':
+            value = cam.getGain()
+        else:
+             emit('camera_error', {'success': False, 'message': f"未知参数类型: {param_type}"}, room=request.sid)
+             return
+        
+        if value != -1:
+             emit('camera_param_value', {'success': True, 'type': param_type, 'value': value, 'cameraId': camera_id}, room=request.sid)
+        else:
+             emit('camera_error', {'success': False, 'message': f"获取{param_type}失败"}, room=request.sid)
+
+    except Exception as e:
+        emit('camera_error', {'success': False, 'message': str(e)}, room=request.sid)
+
+# ============================ main function ========================================
 if __name__ == "__main__":
-    socketio.run(app, host="127.0.0.1", port=8090, debug=True)
+    try:
+        socketio.run(app, host="127.0.0.1", port=8090, debug=True)
+    finally:
+        MvCamera.MV_CC_Finalize()

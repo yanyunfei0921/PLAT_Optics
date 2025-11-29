@@ -1,0 +1,20 @@
+{
+  "cameras": [
+    {
+      "exposureTime": 50000,
+      "frameRate": 30,
+      "id": 1,
+      "ip": "192.168.1.10",
+      "name": "相机1",
+      "threshold": 128
+    },
+    {
+      "exposureTime": 40,
+      "frameRate": 30,
+      "id": 2,
+      "ip": "192.168.1.11",
+      "name": "相机2",
+      "threshold": 128
+    }
+  ]
+}

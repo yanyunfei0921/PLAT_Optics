@@ -26,7 +26,8 @@ class CameraService:
         self.hThreadHandle = None
 
     def initCamera(self):
-        MvCamera.MV_CC_Initialize()
+        # init 和 destory 这两个SDK相关函数改为在app.py文件中调用，而这里仅保留单个相机的创建和销毁
+        # MvCamera.MV_CC_Initialize()
 
         self.deviceList = MV_CC_DEVICE_INFO_LIST()
     
@@ -147,7 +148,7 @@ class CameraService:
             print ("destroy handle fail! ret[0x%x]" % ret)
             return False
         
-        MvCamera.MV_CC_Finalize()
+        # MvCamera.MV_CC_Finalize()
 
         return True
 
@@ -157,7 +158,7 @@ class CameraService:
         while self.running:
             ret = self.cam.MV_CC_GetImageBuffer(stOutFrame, 1000)
             if None != stOutFrame.pBufAddr and 0 == ret:
-                print ("get one frame: Width[%d], Height[%d], nFrameNum[%d]"  % (stOutFrame.stFrameInfo.nWidth, stOutFrame.stFrameInfo.nHeight, stOutFrame.stFrameInfo.nFrameNum))
+                # print ("get one frame: Width[%d], Height[%d], nFrameNum[%d]"  % (stOutFrame.stFrameInfo.nWidth, stOutFrame.stFrameInfo.nHeight, stOutFrame.stFrameInfo.nFrameNum))
                 
                 # DEBUG
                 # 最初用于直接窗口显示图像的代码
@@ -303,8 +304,6 @@ class CameraService:
     def getLatestFrame(self):
         return self.frame_queue.pop() if self.frame_queue else None
 
-camSer1 = CameraService(0)
-camSer2 = CameraService(1)
 
 if __name__ == "__main__":
     # 测试相机

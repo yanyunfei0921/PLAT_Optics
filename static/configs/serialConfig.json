@@ -4,13 +4,13 @@
       "cnName": "光源",
       "connected": false,
       "key": "light_source",
-      "port": "COM6"
+      "port": "COM1"
     },
     {
       "cnName": "三轴电机",
       "connected": false,
       "key": "three_axis_motor",
-      "port": "COM3"
+      "port": "COM1"
     },
     {
       "cnName": "延时模块",
@@ -29,15 +29,15 @@
     "delay_module": {
       "baudrate": 115200,
       "dataBits": 8,
-      "stopBits": 1,
       "parity": "None",
+      "stopBits": 1,
       "timeout": 1000
     },
     "light_source": {
       "baudrate": 9600,
       "dataBits": 8,
-      "stopBits": 1,
       "parity": "None",
+      "stopBits": 1,
       "timeout": 1000
     },
     "rail_motor": {
