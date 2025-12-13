@@ -37,7 +37,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="D:\20251028CF平台重构\PLAT_Optics\.venv"
+VIRTUAL_ENV="D:\ATE\251028CF_REBUILD\PLAT_Optics\.venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

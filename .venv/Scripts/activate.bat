@@ -8,7 +8,7 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
-set VIRTUAL_ENV=D:\20251028CF平台重构\PLAT_Optics\.venv
+set VIRTUAL_ENV=D:\ATE\251028CF_REBUILD\PLAT_Optics\.venv
 
 if not defined PROMPT set PROMPT=$P$G
 

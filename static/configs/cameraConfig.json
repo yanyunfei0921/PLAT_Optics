@@ -1,19 +1,30 @@
 {
   "cameras": [
     {
-      "exposureTime": 50000,
-      "frameRate": 30,
+      "exposureTime": 5000,
+      "frameRate": 1,
+      "gain": 0,
       "id": 1,
-      "ip": "192.168.1.10",
+      "ip": "10.64.192.226",
       "name": "相机1",
       "threshold": 128
     },
     {
-      "exposureTime": 40,
-      "frameRate": 30,
+      "exposureTime": 5000,
+      "frameRate": 9,
+      "gain": 0,
       "id": 2,
-      "ip": "192.168.1.11",
-      "name": "相机2",
+      "ip": "10.64.17.146",
+      "name": "相机2啦啦啦",
+      "threshold": 128
+    },
+    {
+      "exposureTime": 5000,
+      "frameRate": 9,
+      "gain": 0,
+      "id": 3,
+      "ip": "10.64.17.149",
+      "name": "相机3(未开发)",
       "threshold": 128
     }
   ]

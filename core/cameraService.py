@@ -76,6 +76,8 @@ class CameraService:
         return True
 
     def connectAndOpenCamera(self):
+        if self.cam is not None:
+            self.closeAndDisconnectCamera()
         self.cam = MvCamera()
         stDeviceList = cast(self.deviceList.pDeviceInfo[int(self.nConnectionNum)], POINTER(MV_CC_DEVICE_INFO)).contents
         ret = self.cam.MV_CC_CreateHandle(stDeviceList)
@@ -129,35 +131,50 @@ class CameraService:
 
     def closeAndDisconnectCamera(self):
         self.running = False
-
-        if hasattr(self, 'hThreadHandle') and self.hThreadHandle.is_alive():
-            self.hThreadHandle.join()
+        if self.cam is None:
+            return True
         
-        ret = self.cam.MV_CC_StopGrabbing()
-        if ret != 0:
-            print ("stop grabbing fail! ret[0x%x]" % ret)
-            return False
+        try:
+            ret = self.cam.MV_CC_StopGrabbing()
+            if ret != 0:
+                print ("stop grabbing fail! ret[0x%x]" % ret)
+        except Exception as e:
+             print(f"StopGrabbing exception: {e}")
+            
+        if hasattr(self, 'hThreadHandle') and self.hThreadHandle is not None:
+            if self.hThreadHandle.is_alive():
+                # 给线程一点时间退出，通常 StopGrabbing 后它是秒退的
+                # 超时时间设为 2.0s，足以覆盖 1FPS 的极端情况
+                self.hThreadHandle.join(timeout=2.0) 
+            self.hThreadHandle = None      
         
-        ret = self.cam.MV_CC_CloseDevice()
-        if ret != 0:
-            print ("close device fail! ret[0x%x]" % ret)
-            return False
+        try:
+            ret = self.cam.MV_CC_CloseDevice()
+            if ret != 0:
+                print ("close device fail! ret[0x%x]" % ret)
+        except Exception as e:
+            print(f"CloseDevice exception: {e}")
         
-        ret = self.cam.MV_CC_DestroyHandle()
-        if ret != 0:
-            print ("destroy handle fail! ret[0x%x]" % ret)
-            return False
+        try:
+            ret = self.cam.MV_CC_DestroyHandle()
+            if ret != 0:
+                print ("destroy handle fail! ret[0x%x]" % ret)
+        except Exception as e:
+            print(f"DestroyHandle exception: {e}")
         
         # MvCamera.MV_CC_Finalize()
-
+        self.cam = None
         return True
 
     def work_thread(self, pData=0, nDataSize=0):
         stOutFrame = MV_FRAME_OUT()  
         memset(byref(stOutFrame), 0, sizeof(stOutFrame))
         while self.running:
-            ret = self.cam.MV_CC_GetImageBuffer(stOutFrame, 1000)
+            ret = self.cam.MV_CC_GetImageBuffer(stOutFrame, 2000)
             if None != stOutFrame.pBufAddr and 0 == ret:
+                if not self.running:
+                    self.cam.MV_CC_FreeImageBuffer(stOutFrame)
+                    break
                 # print ("get one frame: Width[%d], Height[%d], nFrameNum[%d]"  % (stOutFrame.stFrameInfo.nWidth, stOutFrame.stFrameInfo.nHeight, stOutFrame.stFrameInfo.nFrameNum))
                 
                 # DEBUG
@@ -197,30 +214,37 @@ class CameraService:
                     stConvertParam.enDstPixelType = PixelType_Gvsp_Mono8
                     stConvertParam.pDstBuffer = (c_ubyte * nMonoSize)()
                     stConvertParam.nDstBufferSize = nMonoSize
-                    ret = self.cam.MV_CC_ConvertPixelTypeEx(stConvertParam)
-                    if ret != 0:
-                        print("convert pixel to mono8 fail! ret[0x%x]" % ret)
+                    if self.running:
+                        ret = self.cam.MV_CC_ConvertPixelTypeEx(stConvertParam)
+                        if ret != 0:
+                            print("convert pixel to mono8 fail! ret[0x%x]" % ret)
+                        else:
+                            img = np.ctypeslib.as_array(stConvertParam.pDstBuffer, shape=(stConvertParam.nHeight, stConvertParam.nWidth))
+                
+                if img is not None and self.running:
+                    frame_data = self.centroidExtract(img, stOutFrame.stFrameInfo.nFrameNum)
+                    if frame_data:
+                        self.frame_queue.append(frame_data)
                     else:
-                        img = np.ctypeslib.as_array(stConvertParam.pDstBuffer, shape=(stConvertParam.nHeight, stConvertParam.nWidth))
-
-                if img is None:
-                    print("error: img is None!")
-                    return
-
-                frame_data = self.centroidExtract(img, stOutFrame.stFrameInfo.nFrameNum)
-                if frame_data:
-                    self.frame_queue.append(frame_data)
-                else:
-                    print("error: frame_data is None!")
+                        print("error: frame_data is None!")
 
                 nRet = self.cam.MV_CC_FreeImageBuffer(stOutFrame)
                 if nRet != 0:
                     print("free image buffer fail! ret[0x%x]" % nRet)
             else:
-                print ("no data[0x%x]" % ret)
+                if ret == 0x80000007:
+                    # 超时无数据
+                    continue
+                if not self.running:
+                    break
+
+                print (f"GetImageBuffer failed: ret[0x{ret:x}]")
                 time.sleep(0.01)
 
     def setAcquisitionFrameRate(self, rate):
+        ret = self.cam.MV_CC_SetBoolValue("AcquisitionFrameRateEnable", True)
+        if ret != 0:
+            print("Warning: Set AcquisitionFrameRateEnable fail! ret[0x%x]" % ret)
         ret = self.cam.MV_CC_SetFloatValue("AcquisitionFrameRate", rate)
         if ret != 0:
             print("set frame fail! ret[0x%x]" % ret)
@@ -236,7 +260,8 @@ class CameraService:
         return self.stFloatValue.fCurValue
 
     def setExpsureTime(self, time):
-        ret = self.cam.MV_CC_SetFloatValue("ExpsureTime", time)
+        self.cam.MV_CC_SetEnumValue("ExposureAuto", 0)
+        ret = self.cam.MV_CC_SetFloatValue("ExposureTime", time)
         if ret != 0:
             print("set expsure time fail! ret[0x%x]" % ret)
             return False
@@ -244,14 +269,15 @@ class CameraService:
     
     def getExpsureTime(self):
         memset(byref(self.stFloatValue), 0 ,sizeof(MVCC_FLOATVALUE))
-        ret = self.cam.MV_CC_GetFloatValue("ExpsureTime", self.stFloatValue)
+        ret = self.cam.MV_CC_GetFloatValue("ExposureTime", self.stFloatValue)
         if ret != 0:
             print("get expsure time fail! ret[0x%x]" % ret)
             return -1
         return self.stFloatValue.fCurValue
 
     def setGain(self, gain):
-        ret = self.cam.MV_CC_SetFloatValue("Gain", gain)
+        self.cam.MV_CC_SetEnumValue("GainAuto", 0)
+        ret = self.cam.MV_CC_SetFloatValue("Gain", float(gain))
         if ret != 0:
             print("set gain fail! ret[0x%x]" % ret)
             return False

@@ -140,6 +140,17 @@
                 <div class="panel__hd">
                     <div>相机显示区</div>
                     <div class="toolbar">
+                        <el-button-group style="margin-right: 10px;">
+                            <el-button 
+                                size="mini" 
+                                icon="el-icon-crop" 
+                                @click="toggleZoomMode" 
+                                :type="isZoomMode ? 'warning' : 'default'"
+                                title="点击开启框选放大">
+                            </el-button>
+                            <el-button size="mini" icon="el-icon-full-screen" @click="resetZoom" title="复位全图"></el-button>
+                        </el-button-group>
+                        <span v-if="viewRect" style="font-size:12px; color:#E6A23C; margin-right:10px; font-weight:bold;">局部放大中</span>
                         <el-select v-model="selectedCamera" size="mini" placeholder="选择相机" style="width:160px">
                             <el-option v-for="cam in cameraList" :key="cam.value" :label="cam.label" :value="cam.value"></el-option>
                         </el-select>
@@ -172,7 +183,10 @@
                                     <el-form-item label="帧率">
                                         <el-input-number v-model="currentCamSettings.frameRate" :min="1" :max="60" controls-position="right" style="width: 100%" @change="updateCameraParam('frameRate')"></el-input-number>
                                     </el-form-item>
-                                    <el-form-item label="二值化阈值">
+                                    <el-form-item label="增益">
+                                        <el-input-number v-model="currentCamSettings.gain" :min="0" :max="20" :step="0.1" controls-position="right" style="width: 100%" @change="updateCameraParam('gain')"></el-input-number>
+                                    </el-form-item>
+                                    <el-form-item label="黑白阈值">
                                         <el-input-number v-model="currentCamSettings.threshold" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateCameraParam('threshold')"></el-input-number>
                                     </el-form-item>
                                     <el-form-item>
@@ -186,7 +200,16 @@
                 </div>
                 <div class="panel__bd panel__bd--cam">
                     <div class="cam-viewport">
-                        <canvas ref="cameraCanvas" class="cam-viewport__media" v-show="cameraEnabled"></canvas>
+                        <canvas
+                            ref="cameraCanvas"
+                            class="cam-viewport__media"
+                            v-show="cameraEnabled"
+                            :style="{ cursor: isZoomMode ? 'crosshair' : 'default' }"
+                            @mousedown="onMouseDown"
+                            @mousemove="onMouseMove"
+                            @mouseup="onMouseUp"
+                            @mouseleave="onMouseUp"
+                        ></canvas>
                         <div v-if="!cameraEnabled" class="cam-viewport__placeholder">
                             <span>相机已关闭</span>
                         </div>
@@ -341,57 +364,40 @@
     </el-dialog>
     <el-dialog title="高级相机设置" :visible.sync="advancedSettingVisible" width="600px" :close-on-click-modal="false">
         <el-tabs type="border-card">
-            <el-tab-pane label="相机 1">
-                <el-form :model="cameraConfigs[0]" label-width="100px" size="small">
+            <el-tab-pane 
+                v-for="(camConfig, index) in cameraConfigs" 
+                :key="camConfig.id" 
+                :label="camConfig.name || ('相机 ' + camConfig.id)">
+                
+                <el-form :model="camConfig" label-width="100px" size="small">
                     <el-form-item label="相机名称">
-                        <el-input v-model="cameraConfigs[0].name"></el-input>
+                        <el-input v-model="camConfig.name"></el-input>
                     </el-form-item>
                     <el-form-item label="IP 地址">
-                        <el-input v-model="cameraConfigs[0].ip"></el-input>
+                        <el-input v-model="camConfig.ip"></el-input>
                     </el-form-item>
+                    
                     <el-divider content-position="left">默认参数</el-divider>
+                    
                     <el-row :gutter="20">
-                        <el-col :span="8">
+                        <el-col :span="6">
                             <el-form-item label="曝光" label-width="50px">
-                                <el-input-number v-model="cameraConfigs[0].exposureTime" :controls="false" style="width:100%"></el-input-number>
+                                <el-input-number v-model="camConfig.exposureTime" :controls="false" style="width:100%"></el-input-number>
                             </el-form-item>
                         </el-col>
-                        <el-col :span="8">
+                        <el-col :span="6">
                             <el-form-item label="帧率" label-width="50px">
-                                <el-input-number v-model="cameraConfigs[0].frameRate" :controls="false" style="width:100%"></el-input-number>
+                                <el-input-number v-model="camConfig.frameRate" :controls="false" style="width:100%"></el-input-number>
                             </el-form-item>
                         </el-col>
-                        <el-col :span="8">
+                        <el-col :span="6">
+                            <el-form-item label="增益" label-width="50px">
+                                <el-input-number v-model="camConfig.gain" :controls="false" style="width:100%"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="6">
                             <el-form-item label="阈值" label-width="50px">
-                                <el-input-number v-model="cameraConfigs[0].threshold" :controls="false" style="width:100%"></el-input-number>
-                            </el-form-item>
-                        </el-col>
-                    </el-row>
-                </el-form>
-            </el-tab-pane>
-            <el-tab-pane label="相机 2">
-                <el-form :model="cameraConfigs[1]" label-width="100px" size="small">
-                    <el-form-item label="相机名称">
-                        <el-input v-model="cameraConfigs[1].name"></el-input>
-                    </el-form-item>
-                    <el-form-item label="IP 地址">
-                        <el-input v-model="cameraConfigs[1].ip"></el-input>
-                    </el-form-item>
-                    <el-divider content-position="left">默认参数</el-divider>
-                    <el-row :gutter="20">
-                        <el-col :span="8">
-                            <el-form-item label="曝光" label-width="50px">
-                                <el-input-number v-model="cameraConfigs[1].exposureTime" :controls="false" style="width:100%"></el-input-number>
-                            </el-form-item>
-                        </el-col>
-                        <el-col :span="8">
-                            <el-form-item label="帧率" label-width="50px">
-                                <el-input-number v-model="cameraConfigs[1].frameRate" :controls="false" style="width:100%"></el-input-number>
-                            </el-form-item>
-                        </el-col>
-                        <el-col :span="8">
-                            <el-form-item label="阈值" label-width="50px">
-                                <el-input-number v-model="cameraConfigs[1].threshold" :controls="false" style="width:100%"></el-input-number>
+                                <el-input-number v-model="camConfig.threshold" :controls="false" style="width:100%"></el-input-number>
                             </el-form-item>
                         </el-col>
                     </el-row>
@@ -435,12 +441,8 @@ var vm = new Vue({
         // 相机相关
         camera3Source: '/static/images/test_image.jpg',
         cameraEnabled: false,
-        selectedCamera: 'cam1',
-        cameraList: [
-            { label: '相机1', value: 'cam1' },
-            { label: '相机2', value: 'cam2' },
-            { label: '相机3(预留)', value: 'cam3'}
-        ],
+        selectedCamera: 1,
+        cameraList: [],
         // 指示激光控制
         laserOn: false,
         laserPower: 15,
@@ -480,14 +482,21 @@ var vm = new Vue({
         // 相机设置
         advancedSettingVisible: false,
         cameraConfigs: [
-            { id: 1, name: '相机1', ip: '', exposureTime: 5000, frameRate: 30, threshold: 128 },
-            { id: 2, name: '相机2', ip: '', exposureTime: 5000, frameRate: 30, threshold: 128 }
+            { id: 1, name: '相机1', ip: '', exposureTime: 5000, frameRate: 1, gain: 0, threshold: 128 },
+            { id: 2, name: '相机2', ip: '', exposureTime: 5000, frameRate: 1, gain: 0, threshold: 128 }
         ],
         currentCamSettings: {
             exposureTime: 5000,
             frameRate: 30,
+            gain: 0,
             threshold: 128
-        }
+        },
+        // 图像显示缩放
+        isZoomMode: false,
+        viewRect: null,
+        isSelecting: false,
+        selectionStart: {x:0, y:0},
+        selectionCurrent: {x:0, y:0}
     },
     computed: {
         activeStageIndex(){
@@ -665,11 +674,19 @@ var vm = new Vue({
                 this.$message.success('已重置，请开始新一轮测试');
             }).catch(() => {});
         },
-        loadCameraConfig() {
+        loadCameraConfig(callback) {
             axios.get('/api/camera-config').then(res => {
                 if (res.data.success) {
                     this.cameraConfigs = res.data.data.cameras;
-                    this.syncCurrentCamSettings(); // 初始化时同步一次
+                    const dynamicList = this.cameraConfigs.map(cam=>({
+                        label: cam.name || `相机 ${cam.id}`,
+                        value: cam.id
+                    }));
+                    this.cameraList = dynamicList;
+
+                    if(callback){
+                        callback();
+                    }
                 }
             });
         },
@@ -694,9 +711,15 @@ var vm = new Vue({
                 if (res.data.success) {
                     this.$message.success('相机配置保存成功');
                     this.advancedSettingVisible = false;
-                    this.syncCurrentCamSettings(); // 保存后更新当前面板
+
+                    this.loadCameraConfig(()=>{
+                        this.syncCurrentCamSettings(); // 保存后更新当前面板
+                        if(this.isConnected){
+                            this.applyAllCameraParams(this.getCameraIntId(this.selectedCamera))
+                        }
+                    });
                 } else {
-                    this.$message.error('保存失败');
+                    this.$message.error('保存失败' +res.data.message || "未知错误");
                 }
             });
         },
@@ -704,24 +727,44 @@ var vm = new Vue({
             // 1. 发送指令给相机硬件
             if (this.isConnected) {
                 const val = this.currentCamSettings[type];
-                // 这里需要 socket 发送设置指令，假设后端监听 'camera_set_param'
-                // 示例：this.socket.emit('camera_set_param', { cameraId: 1, type: 'exposure', value: val });
-                // 由于您目前的 cameraService.py 主要通过 setExpsureTime 等方法，
-                // 您需要在 cameraService.py 和 app.py 中补充对应的 Socket 监听接口。
-                // 这里仅打印日志作为占位：
-                console.log(`设置相机参数 ${type} = ${val}`);
-                
-                // 临时方案：如果您还没写后端接口，这里只是前端数值变化
+                const camId = this.getCameraIntId(this.selectedCamera);
+                if(camId !== 3){
+                    console.log(`发送参数设置: ID=${camId}, Type=${type}, Val=${val}`);
+                    this.socket.emit('camera_set_param',{
+                        cameraId: camId,
+                        type: type,
+                        value: val
+                    });
+                }
             }
             // 2. 更新内存中的配置，以便打开弹窗时能看到最新值
-            const camId = this.getCameraIntId(this.selectedCamera);
+            // const camId = this.getCameraIntId(this.selectedCamera);
+            // const config = this.cameraConfigs.find(c => c.id === camId);
+            // if (config) {
+            //     config[type] = this.currentCamSettings[type];
+            // }
+        },
+        applyAllCameraParams(camId) {
+            if (camId === 3) return;
             const config = this.cameraConfigs.find(c => c.id === camId);
-            if (config) {
-                config[type] = this.currentCamSettings[type];
-            }
+            if (!config) return;
+
+            console.log(`正在应用相机 ${camId} 的所有初始化参数...`);
+            // 依次发送参数设置指令
+            ['exposureTime', 'frameRate', 'threshold', 'gain'].forEach(type => {
+                if (config[type] !== undefined) {
+                    this.socket.emit('camera_set_param', {
+                        cameraId: camId,
+                        type: type,
+                        value: config[type]
+                    });
+                }
+            });
         },
         getCameraIntId(camValue){
-            return {'cam1' : 1, 'cam2' : 2, 'cam3' : 3}[camValue] || 1;
+            // 从最开始的map，改为直接输出即可
+            // return {'cam1' : 1, 'cam2' : 2, 'cam3' : 3}[camValue] || 1;
+            return Number(camValue) || 1;
         },
         connectCamera(){
             if(!this.cameraEnabled) return;
@@ -815,18 +858,131 @@ var vm = new Vue({
             this.socket.on('camera_connected', (data) => {
                 if(data.success) {
                     this.isConnected = true;
-                    this.$message.success('相机已连接，开始采集');
+                    this.cameraEnabled = true;
+                    this.loadCameraConfig(()=>{
+                        const currentId = this.getCameraIntId(this.selectedCamera);
+                        if(data.cameraId === currentId){
+                            this.applyAllCameraParams(currentId);
+                            this.syncCurrentCamSettings();
+                            this.$message.success("相机已连接，以应用默认配置");
+                        }
+                    })
                 }
             });
             // 监听错误
             this.socket.on('camera_error', (data) => {
                 this.$message.error(data.message || '相机错误');
-                this.isConnected = false;
+                // this.isConnected = false;
+            });
+            this.socket.on('camera_msg', (data) => {
+                if (data.success) {
+                    this.$message.success(data.message);
+                } else {
+                    this.$message.warning(data.message);
+                }
             });
             // 接收图像
             this.socket.on('camera_frame', (frameData) => {
                 this.handleNewFrame(frameData);
             });
+        },
+        // 放缩模式选择开关
+        toggleZoomMode() {
+            this.isZoomMode = !this.isZoomMode;
+            if (!this.isZoomMode) {
+                // 如果关闭模式，取消当前的拖拽状态
+                this.isSelecting = false;
+            }
+        },
+        getCanvasCoordinates(e) {
+            const rect = this.canvas.getBoundingClientRect();
+            // 计算比例因子：内部分辨率 / 显示尺寸
+            const scaleX = this.canvas.width / rect.width;
+            const scaleY = this.canvas.height / rect.height;
+
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        },
+
+        onMouseDown(e) {
+            if (!this.isZoomMode || !this.cameraEnabled) return;
+            
+            // 【修改】使用转换后的坐标
+            const coords = this.getCanvasCoordinates(e);
+            this.selectionStart = { x: coords.x, y: coords.y };
+            this.selectionCurrent = { ...this.selectionStart };
+            this.isSelecting = true;
+        },
+
+        onMouseMove(e) {
+            if (!this.isSelecting) return;
+            
+            // 【修改】使用转换后的坐标，并限制在分辨率范围内
+            const coords = this.getCanvasCoordinates(e);
+            let x = Math.max(0, Math.min(this.canvas.width, coords.x));
+            let y = Math.max(0, Math.min(this.canvas.height, coords.y));
+            
+            this.selectionCurrent = { x, y };
+        },
+
+        onMouseUp(e) {
+            if (!this.isSelecting) return;
+            this.isSelecting = false;
+            
+            // 1. 计算 Canvas 上的框选矩形 (此时已经是内部分辨率坐标了，直接用)
+            const startX = Math.min(this.selectionStart.x, this.selectionCurrent.x);
+            const startY = Math.min(this.selectionStart.y, this.selectionCurrent.y);
+            const w = Math.abs(this.selectionCurrent.x - this.selectionStart.x);
+            const h = Math.abs(this.selectionCurrent.y - this.selectionStart.y);
+
+            if (w < 10 || h < 10) return;
+
+            this.isZoomMode = false;
+
+            // 2. 计算新的视口
+            // ... (后续逻辑保持不变，因为现在的 x,y,w,h 已经是正确的 Canvas 坐标了) ...
+            const currentView = this.viewRect || { 
+                x: 0, y: 0, 
+                w: Number(this.imageInfo.width), 
+                h: Number(this.imageInfo.height) 
+            };
+
+            // 注意：这里因为已经是 Canvas 坐标，比例因子计算方式略有不同
+            // 如果 viewRect 为空（全图），Canvas 坐标就是原图坐标，比例为 1
+            // 如果 viewRect 不为空（已经是局部），需要根据 Canvas 宽度反推回原图
+            const scaleX = currentView.w / this.canvas.width;
+            const scaleY = currentView.h / this.canvas.height;
+
+            let newX = currentView.x + (startX * scaleX);
+            let newY = currentView.y + (startY * scaleY);
+            let newW = w * scaleX;
+            let newH = h * scaleY;
+
+            // ... (后续宽高比修正逻辑保持不变) ...
+            
+            // 宽高比修正代码参考：
+            const canvasRatio = this.canvas.width / this.canvas.height;
+            const selectRatio = newW / newH;
+            if (selectRatio > canvasRatio) {
+                const targetH = newW / canvasRatio;
+                newY -= (targetH - newH) / 2;
+                newH = targetH;
+            } else {
+                const targetW = newH * canvasRatio;
+                newX -= (targetW - newW) / 2;
+                newW = targetW;
+            }
+
+            this.viewRect = { x: newX, y: newY, w: newW, h: newH };
+        },
+        resetZoom() {
+            this.viewRect = null;        // 清空视口，handleNewFrame 会自动切回全图
+            this.isZoomMode = false;     // 退出框选模式按钮高亮
+            this.isSelecting = false;    // 停止拖拽状态
+            this.selectionStart = {x:0, y:0};
+            this.selectionCurrent = {x:0, y:0};
         },
         handleNewFrame(data){
             if(!this.ctx || !this.cameraEnabled) return;
@@ -839,18 +995,61 @@ var vm = new Vue({
             if(this.canvas.width !== data.width || this.canvas.height !== data.height){
                 this.canvas.width = data.width;
                 this.canvas.height = data.height;
+                this.viewRect = null;
             }
 
             const img = new Image();
             img.onload = () => {
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+
+                if(this.viewRect){
+                    this.ctx.drawImage(
+                        img,
+                        this.viewRect.x, this.viewRect.y, this.viewRect.w, this.viewRect.h,
+                        0, 0, this.canvas.width, this.canvas.height
+                    );
+                }
+                else{
+                    this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+                }
                 
                 if(this.drawCross){
                     this.drawCenterCross(this.canvas.width, this.canvas.height);
                 }
                 if(this.drawCentroid & data.centroidX > 0 & data.centroidY > 0){
-                    this.drawCentroidPoint(data.centroidX, data.centroidY);
+                    let drawX, drawY;
+                    if (this.viewRect) {
+                        // 如果在放大模式，需要将原图坐标映射到 Canvas 坐标
+                        const scaleX = this.canvas.width / this.viewRect.w;
+                        const scaleY = this.canvas.height / this.viewRect.h;
+                        drawX = (data.centroidX - this.viewRect.x) * scaleX;
+                        drawY = (data.centroidY - this.viewRect.y) * scaleY;
+
+                        // 只有质心在当前视野内才绘制
+                        if (drawX < 0 || drawX > this.canvas.width || drawY < 0 || drawY > this.canvas.height) {
+                            drawX = -1; // 标记为不绘制
+                        }
+                    } else {
+                        // 全图模式，直接绘制
+                        drawX = data.centroidX;
+                        drawY = data.centroidY;
+                    }
+                    if (drawX !== -1) {
+                        this.drawCentroidPoint(drawX, drawY);
+                    }
+                }
+                // 绘制黄色交互框
+                if(this.isSelecting){
+                    const w = this.selectionCurrent.x - this.selectionStart.x;
+                    const h = this.selectionCurrent.y - this.selectionStart.y;
+                    
+                    this.ctx.save();
+                    this.ctx.beginPath();
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeStyle = '#E6A23C'; // ElementUI Warning Color
+                    this.ctx.setLineDash([6, 4]);
+                    this.ctx.strokeRect(this.selectionStart.x, this.selectionStart.y, w, h);
+                    this.ctx.restore();
                 }
             };
             img.src = data.image;

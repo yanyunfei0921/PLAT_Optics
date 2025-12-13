@@ -30,7 +30,7 @@ socketio = SocketIO(app, cors_allowed_origins='*')
 _client_stream_threads = {}
 _client_camera_ids = {}
 
-# 初始化相机SDK
+# 初始化测试箱内相机SDK
 try:
     ret = MvCamera.MV_CC_Initialize()
     if ret != 0:
@@ -40,6 +40,7 @@ try:
 except Exception as e:
     print(f"SDK init Error: {e}")
 
+# 测试箱内相机实例
 camSer1 = CameraService(0)
 camSer2 = CameraService(1)
 def _get_camera_by_id(camera_id):
@@ -55,6 +56,9 @@ def _stream_frames_to_client(camera_service, sid):
         if frame_data:
             socketio.emit('camera_frame', frame_data, room=sid)
         socketio.sleep(0.03)
+
+# OK相机实例
+
 
 if not os.path.exists(STATIC_DIR):
     os.mkdir(STATIC_DIR)
