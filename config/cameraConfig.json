@@ -1,0 +1,45 @@
+{
+  "cameras": [
+    {
+      "exposureTime": 5000,
+      "frameRate": 10,
+      "gain": 0,
+      "id": 1,
+      "ip": "10.64.192.226",
+      "isVirtual": false,
+      "name": "相机1",
+      "threshold": 128,
+      "type": "mvcamera"
+    },
+    {
+      "exposureTime": 5000,
+      "frameRate": 9,
+      "gain": 0,
+      "id": 2,
+      "ip": "10.64.17.146",
+      "isVirtual": false,
+      "name": "相机2",
+      "threshold": 128,
+      "type": "mvcamera"
+    },
+    {
+      "id": 3,
+      "name": "SDI采集",
+      "threshold": 128,
+      "isVirtual": false,
+      "type": "sdi",
+      "sdiChannel": 0,
+      "brightness": 136,
+      "contrast": 146,
+      "saturation": 136,
+      "hue": 0
+    },
+    {
+      "id": 4,
+      "name": "静态图像上传",
+      "threshold": 128,
+      "isVirtual": true,
+      "type": "virtual"
+    }
+  ]
+}

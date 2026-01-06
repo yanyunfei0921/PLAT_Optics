@@ -16,7 +16,7 @@ class CommandService:
         self._config_path: Path = (
             config_path
             if config_path is not None
-            else Path(__file__).resolve().parent.parent / "static" / "configs" / "commandConfig.json"
+            else Path(__file__).resolve().parent.parent / "config" / "commandConfig.json"
         )
         self._serial = serial
 

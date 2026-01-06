@@ -177,11 +177,11 @@
                             style="display: none" 
                             @change="handleImageUpload"
                         >
-                        <el-button 
-                            v-if="selectedCamera === 3" 
-                            size="mini" 
-                            type="primary" 
-                            icon="el-icon-upload2" 
+                        <el-button
+                            v-if="selectedCamera === 4"
+                            size="mini"
+                            type="primary"
+                            icon="el-icon-upload2"
                             @click="$refs.uploadInput.click()"
                             style="margin-right: 10px;"
                         >
@@ -203,13 +203,14 @@
                                 </el-dropdown-item>
                             </el-dropdown-menu>
                         </el-dropdown>
-                        <!-- <el-button size="mini" icon="el-icon-setting" @click="openCameraSettings">设置</el-button> -->
-                        <el-dropdown :hide-on-click="false" trigger="click">
+                        <!-- 相机设置下拉菜单 - 根据相机类型显示不同UI -->
+                        <el-dropdown :hide-on-click="false" trigger="click" v-if="selectedCamera !== 4">
                             <el-button size="mini" icon="el-icon-setting">
                                 相机设置<i class="el-icon-arrow-down el-icon--right"></i>
                             </el-button>
-                            <el-dropdown-menu slot="dropdown" style="width: 240px; padding: 10px;">
-                                <el-form size="mini" label-width="80px">
+                            <el-dropdown-menu slot="dropdown" style="width: 260px; padding: 10px;">
+                                <!-- MvCamera设置 (相机1/2) -->
+                                <el-form v-if="selectedCamera === 1 || selectedCamera === 2" size="mini" label-width="80px">
                                     <el-form-item label="曝光时间">
                                         <el-input-number v-model="currentCamSettings.exposureTime" :min="10" :step="100" controls-position="right" style="width: 100%" @change="updateCameraParam('exposureTime')"></el-input-number>
                                     </el-form-item>
@@ -221,6 +222,27 @@
                                     </el-form-item>
                                     <el-form-item label="黑白阈值">
                                         <el-input-number v-model="currentCamSettings.threshold" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateCameraParam('threshold')"></el-input-number>
+                                    </el-form-item>
+                                    <el-form-item>
+                                        <el-button type="text" style="width: 100%; text-align: center;" @click="openAdvancedSettings">其他设置</el-button>
+                                    </el-form-item>
+                                </el-form>
+                                <!-- SDI相机设置 (相机3) -->
+                                <el-form v-else-if="selectedCamera === 3" size="mini" label-width="80px">
+                                    <el-form-item label="亮度">
+                                        <el-input-number v-model="sdiParams.brightness" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateSDIParam('brightness')"></el-input-number>
+                                    </el-form-item>
+                                    <el-form-item label="对比度">
+                                        <el-input-number v-model="sdiParams.contrast" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateSDIParam('contrast')"></el-input-number>
+                                    </el-form-item>
+                                    <el-form-item label="饱和度">
+                                        <el-input-number v-model="sdiParams.saturation" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateSDIParam('saturation')"></el-input-number>
+                                    </el-form-item>
+                                    <el-form-item label="色调">
+                                        <el-input-number v-model="sdiParams.hue" :min="-128" :max="127" controls-position="right" style="width: 100%" @change="updateSDIParam('hue')"></el-input-number>
+                                    </el-form-item>
+                                    <el-form-item label="黑白阈值">
+                                        <el-input-number v-model="sdiParams.threshold" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateSDIParam('threshold')"></el-input-number>
                                     </el-form-item>
                                     <el-form-item>
                                         <el-button type="text" style="width: 100%; text-align: center;" @click="openAdvancedSettings">其他设置</el-button>
@@ -395,43 +417,297 @@
             <el-button type="primary" @click="confirmParams">确 定</el-button>
         </span>
     </el-dialog>
-    <el-dialog title="高级相机设置" :visible.sync="advancedSettingVisible" width="600px" :close-on-click-modal="false">
+    <el-dialog title="高级相机设置" :visible.sync="advancedSettingVisible" width="800px" :close-on-click-modal="false">
         <el-tabs type="border-card">
-            <el-tab-pane 
-                v-for="(camConfig, index) in cameraConfigs" 
-                :key="camConfig.id" 
-                :label="camConfig.name || ('相机 ' + camConfig.id)">
-                
-                <el-form :model="camConfig" label-width="100px" size="small">
-                    <el-form-item label="相机名称">
-                        <el-input v-model="camConfig.name"></el-input>
-                    </el-form-item>
-                    <el-form-item label="IP 地址">
-                        <el-input v-model="camConfig.ip"></el-input>
-                    </el-form-item>
-                    
-                    <el-divider content-position="left">默认参数</el-divider>
-                    
+            <!-- 配置保存标签页 -->
+            <el-tab-pane label="默认配置">
+                <el-tabs type="card">
+                    <el-tab-pane
+                        v-for="(camConfig, index) in cameraConfigs"
+                        :key="camConfig.id"
+                        :label="camConfig.name || ('相机 ' + camConfig.id)">
+
+                        <el-form :model="camConfig" label-width="100px" size="small">
+                            <el-form-item label="相机名称">
+                                <el-input v-model="camConfig.name"></el-input>
+                            </el-form-item>
+                            <el-form-item label="IP 地址" v-if="camConfig.type === 'mvcamera'">
+                                <el-input v-model="camConfig.ip"></el-input>
+                            </el-form-item>
+
+                            <!-- MvCamera参数 (相机1/2) -->
+                            <template v-if="camConfig.type === 'mvcamera'">
+                                <el-divider content-position="left">默认参数</el-divider>
+                                <el-row :gutter="20">
+                                    <el-col :span="6">
+                                        <el-form-item label="曝光" label-width="50px">
+                                            <el-input-number v-model="camConfig.exposureTime" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :span="6">
+                                        <el-form-item label="帧率" label-width="50px">
+                                            <el-input-number v-model="camConfig.frameRate" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :span="6">
+                                        <el-form-item label="增益" label-width="50px">
+                                            <el-input-number v-model="camConfig.gain" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :span="6">
+                                        <el-form-item label="阈值" label-width="50px">
+                                            <el-input-number v-model="camConfig.threshold" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                </el-row>
+                            </template>
+
+                            <!-- SDI参数 (相机3) -->
+                            <template v-else-if="camConfig.type === 'sdi'">
+                                <el-divider content-position="left">SDI参数</el-divider>
+                                <el-row :gutter="20">
+                                    <el-col :span="6">
+                                        <el-form-item label="亮度" label-width="50px">
+                                            <el-input-number v-model="camConfig.brightness" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :span="6">
+                                        <el-form-item label="对比度" label-width="50px">
+                                            <el-input-number v-model="camConfig.contrast" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :span="6">
+                                        <el-form-item label="饱和度" label-width="50px">
+                                            <el-input-number v-model="camConfig.saturation" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :span="6">
+                                        <el-form-item label="色调" label-width="50px">
+                                            <el-input-number v-model="camConfig.hue" :min="-128" :max="127" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                </el-row>
+                                <el-row :gutter="20">
+                                    <el-col :span="6">
+                                        <el-form-item label="阈值" label-width="50px">
+                                            <el-input-number v-model="camConfig.threshold" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :span="6">
+                                        <el-form-item label="通道" label-width="50px">
+                                            <el-input-number v-model="camConfig.sdiChannel" :min="0" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                </el-row>
+                            </template>
+
+                            <!-- 虚拟相机参数 (相机4) -->
+                            <template v-else-if="camConfig.type === 'virtual'">
+                                <el-divider content-position="left">参数</el-divider>
+                                <el-row :gutter="20">
+                                    <el-col :span="6">
+                                        <el-form-item label="阈值" label-width="50px">
+                                            <el-input-number v-model="camConfig.threshold" :controls="false" style="width:100%"></el-input-number>
+                                        </el-form-item>
+                                    </el-col>
+                                </el-row>
+                                <el-alert title="虚拟相机用于静态图像分析，无需其他参数" type="info" :closable="false"></el-alert>
+                            </template>
+                        </el-form>
+                    </el-tab-pane>
+                </el-tabs>
+            </el-tab-pane>
+
+            <!-- 实时参数调整标签页（仅当相机连接时可用，虚拟相机不可用） -->
+            <el-tab-pane label="实时参数" :disabled="!isConnected || cameraType === 'virtual'">
+                <el-alert
+                    v-if="!isConnected"
+                    title="请先连接相机"
+                    type="warning"
+                    :closable="false"
+                    show-icon>
+                </el-alert>
+                <el-alert
+                    v-else-if="cameraType === 'virtual'"
+                    title="虚拟相机不支持实时参数"
+                    type="info"
+                    :closable="false"
+                    show-icon>
+                </el-alert>
+
+                <!-- SDI相机实时参数 -->
+                <el-form v-else-if="cameraType === 'sdi'" label-width="100px" size="small">
+                    <el-divider content-position="left">SDI视频参数</el-divider>
                     <el-row :gutter="20">
                         <el-col :span="6">
-                            <el-form-item label="曝光" label-width="50px">
-                                <el-input-number v-model="camConfig.exposureTime" :controls="false" style="width:100%"></el-input-number>
+                            <el-form-item label="亮度">
+                                <el-input-number v-model="sdiParams.brightness" :min="0" :max="255" controls-position="right" style="width:100%" @change="updateSDIParam('brightness')"></el-input-number>
                             </el-form-item>
                         </el-col>
                         <el-col :span="6">
-                            <el-form-item label="帧率" label-width="50px">
-                                <el-input-number v-model="camConfig.frameRate" :controls="false" style="width:100%"></el-input-number>
+                            <el-form-item label="对比度">
+                                <el-input-number v-model="sdiParams.contrast" :min="0" :max="255" controls-position="right" style="width:100%" @change="updateSDIParam('contrast')"></el-input-number>
                             </el-form-item>
                         </el-col>
                         <el-col :span="6">
-                            <el-form-item label="增益" label-width="50px">
-                                <el-input-number v-model="camConfig.gain" :controls="false" style="width:100%"></el-input-number>
+                            <el-form-item label="饱和度">
+                                <el-input-number v-model="sdiParams.saturation" :min="0" :max="255" controls-position="right" style="width:100%" @change="updateSDIParam('saturation')"></el-input-number>
                             </el-form-item>
                         </el-col>
                         <el-col :span="6">
-                            <el-form-item label="阈值" label-width="50px">
-                                <el-input-number v-model="camConfig.threshold" :controls="false" style="width:100%"></el-input-number>
+                            <el-form-item label="色调">
+                                <el-input-number v-model="sdiParams.hue" :min="-128" :max="127" controls-position="right" style="width:100%" @change="updateSDIParam('hue')"></el-input-number>
                             </el-form-item>
+                        </el-col>
+                    </el-row>
+                    <el-row :gutter="20">
+                        <el-col :span="6">
+                            <el-form-item label="二值化阈值">
+                                <el-input-number v-model="sdiParams.threshold" :min="0" :max="255" controls-position="right" style="width:100%" @change="updateSDIParam('threshold')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+                    <el-divider></el-divider>
+                    <el-button type="success" icon="el-icon-refresh" @click="syncSDISettings">刷新参数</el-button>
+                </el-form>
+
+                <!-- MvCamera实时参数 -->
+                <el-form v-else label-width="100px" size="small">
+                    <!-- 基础参数 -->
+                    <el-divider content-position="left">基础参数</el-divider>
+                    <el-row :gutter="20">
+                        <el-col :span="8">
+                            <el-form-item label="曝光时间">
+                                <el-input-number v-model="liveParams.exposureTime" :min="10" :step="100" controls-position="right" style="width:100%" @change="setLiveParam('exposureTime')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="8">
+                            <el-form-item label="帧率">
+                                <el-input-number v-model="liveParams.frameRate" :min="1" :max="60" controls-position="right" style="width:100%" @change="setLiveParam('frameRate')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="8">
+                            <el-form-item label="增益">
+                                <el-input-number v-model="liveParams.gain" :min="0" :max="20" :step="0.1" :precision="1" controls-position="right" style="width:100%" @change="setLiveParam('gain')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+
+                    <!-- 图像尺寸 -->
+                    <el-divider content-position="left">图像尺寸 (ROI)</el-divider>
+                    <el-row :gutter="20">
+                        <el-col :span="6">
+                            <el-form-item label="宽度">
+                                <el-input-number v-model="liveParams.width" :min="32" :step="16" controls-position="right" style="width:100%" @change="setLiveParam('width')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="6">
+                            <el-form-item label="高度">
+                                <el-input-number v-model="liveParams.height" :min="32" :step="16" controls-position="right" style="width:100%" @change="setLiveParam('height')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="6">
+                            <el-form-item label="X偏移">
+                                <el-input-number v-model="liveParams.offsetX" :min="0" :step="16" controls-position="right" style="width:100%" @change="setLiveParam('offsetX')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="6">
+                            <el-form-item label="Y偏移">
+                                <el-input-number v-model="liveParams.offsetY" :min="0" :step="16" controls-position="right" style="width:100%" @change="setLiveParam('offsetY')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+
+                    <!-- 图像处理 -->
+                    <el-divider content-position="left">图像处理</el-divider>
+                    <el-row :gutter="20">
+                        <el-col :span="8">
+                            <el-form-item label="Gamma">
+                                <el-input-number v-model="liveParams.gamma" :min="0.1" :max="4.0" :step="0.1" :precision="2" controls-position="right" style="width:100%" @change="setLiveParam('gamma')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="8">
+                            <el-form-item label="黑电平">
+                                <el-input-number v-model="liveParams.blackLevel" :min="0" :max="255" :step="1" controls-position="right" style="width:100%" @change="setLiveParam('blackLevel')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="8">
+                            <el-form-item label="二值化阈值">
+                                <el-input-number v-model="liveParams.threshold" :min="0" :max="255" :step="1" controls-position="right" style="width:100%" @change="setLiveParam('threshold')"></el-input-number>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+                    <el-row :gutter="20">
+                        <el-col :span="8">
+                            <el-form-item label="X镜像">
+                                <el-switch v-model="liveParams.reverseX" @change="setLiveParam('reverseX')"></el-switch>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="8">
+                            <el-form-item label="Y镜像">
+                                <el-switch v-model="liveParams.reverseY" @change="setLiveParam('reverseY')"></el-switch>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+
+                    <!-- 自动控制 -->
+                    <el-divider content-position="left">自动控制</el-divider>
+                    <el-row :gutter="20">
+                        <el-col :span="8">
+                            <el-form-item label="自动曝光">
+                                <el-select v-model="liveParams.exposureAuto" style="width:100%" @change="setLiveParam('exposureAuto')">
+                                    <el-option label="关闭" :value="0"></el-option>
+                                    <el-option label="单次" :value="1"></el-option>
+                                    <el-option label="连续" :value="2"></el-option>
+                                </el-select>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="8">
+                            <el-form-item label="自动增益">
+                                <el-select v-model="liveParams.gainAuto" style="width:100%" @change="setLiveParam('gainAuto')">
+                                    <el-option label="关闭" :value="0"></el-option>
+                                    <el-option label="单次" :value="1"></el-option>
+                                    <el-option label="连续" :value="2"></el-option>
+                                </el-select>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+
+                    <!-- 触发控制 -->
+                    <el-divider content-position="left">触发控制</el-divider>
+                    <el-row :gutter="20">
+                        <el-col :span="8">
+                            <el-form-item label="触发模式">
+                                <el-select v-model="liveParams.triggerMode" style="width:100%" @change="setLiveParam('triggerMode')">
+                                    <el-option label="关闭 (连续采集)" :value="0"></el-option>
+                                    <el-option label="开启 (触发采集)" :value="1"></el-option>
+                                </el-select>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="8">
+                            <el-form-item label="触发源">
+                                <el-select v-model="liveParams.triggerSource" style="width:100%" @change="setLiveParam('triggerSource')" :disabled="liveParams.triggerMode === 0">
+                                    <el-option label="Line0" :value="0"></el-option>
+                                    <el-option label="Line1" :value="1"></el-option>
+                                    <el-option label="软触发" :value="7"></el-option>
+                                </el-select>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="8">
+                            <el-form-item label="软触发">
+                                <el-button type="primary" size="small" @click="executeSoftwareTrigger" :disabled="liveParams.triggerMode === 0 || liveParams.triggerSource !== 7">执行软触发</el-button>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+
+                    <!-- 操作按钮 -->
+                    <el-divider></el-divider>
+                    <el-row :gutter="20">
+                        <el-col :span="12">
+                            <el-button type="success" icon="el-icon-refresh" @click="refreshLiveParams" style="width:100%">刷新参数</el-button>
+                        </el-col>
+                        <el-col :span="12">
+                            <el-button type="warning" icon="el-icon-download" @click="applyConfigToLive" style="width:100%">应用默认配置</el-button>
                         </el-col>
                     </el-row>
                 </el-form>
@@ -451,6 +727,8 @@ var vm = new Vue({
         // 测试箱相机相关变量
         socket: null,
         isConnected: false,
+        isVirtualCamera: false,  // 是否为虚拟相机(静态图像上传)
+        cameraType: 'mvcamera',  // 相机类型: 'mvcamera', 'sdi', 'virtual'
         ctx: null,
         canvas: null,
         drawCentroid: false,
@@ -523,6 +801,38 @@ var vm = new Vue({
             frameRate: 30,
             gain: 0,
             threshold: 128
+        },
+        // 实时参数（高级设置用 - MvCamera）
+        liveParams: {
+            // 基础参数
+            exposureTime: 5000,
+            frameRate: 10,
+            gain: 0,
+            threshold: 128,
+            // 图像尺寸
+            width: 1280,
+            height: 1024,
+            offsetX: 0,
+            offsetY: 0,
+            // 图像处理
+            gamma: 1.0,
+            blackLevel: 0,
+            reverseX: false,
+            reverseY: false,
+            // 自动控制
+            exposureAuto: 0,
+            gainAuto: 0,
+            // 触发控制
+            triggerMode: 0,
+            triggerSource: 7
+        },
+        // SDI相机参数（相机3）
+        sdiParams: {
+            threshold: 128,
+            brightness: 136,
+            contrast: 146,
+            saturation: 136,
+            hue: 0
         },
         // 图像显示缩放
         isZoomMode: false,
@@ -752,6 +1062,13 @@ var vm = new Vue({
             // 重新加载一次最新配置，防止未同步
             this.loadCameraConfig();
             this.advancedSettingVisible = true;
+
+            // 如果已连接真实相机，自动刷新实时参数
+            if (this.isConnected && !this.isVirtualCamera) {
+                this.$nextTick(() => {
+                    this.refreshLiveParams();
+                });
+            }
         },
         saveAdvancedSettings() {
             const payload = { cameras: this.cameraConfigs };
@@ -772,11 +1089,12 @@ var vm = new Vue({
             });
         },
         updateCameraParam(type) {
-            // 1. 发送指令给相机硬件
+            // 1. 发送指令给MvCamera硬件（相机1/2）
             if (this.isConnected) {
                 const val = this.currentCamSettings[type];
                 const camId = this.getCameraIntId(this.selectedCamera);
-                if(camId !== 3){
+                // 只有MvCamera相机发送参数
+                if(camId === 1 || camId === 2){
                     console.log(`发送参数设置: ID=${camId}, Type=${type}, Val=${val}`);
                     this.socket.emit('camera_set_param',{
                         cameraId: camId,
@@ -785,15 +1103,35 @@ var vm = new Vue({
                     });
                 }
             }
-            // 2. 更新内存中的配置，以便打开弹窗时能看到最新值
-            // const camId = this.getCameraIntId(this.selectedCamera);
-            // const config = this.cameraConfigs.find(c => c.id === camId);
-            // if (config) {
-            //     config[type] = this.currentCamSettings[type];
-            // }
+        },
+        // SDI相机参数设置
+        updateSDIParam(type) {
+            if (!this.isConnected || this.cameraType !== 'sdi') return;
+
+            const val = this.sdiParams[type];
+            const camId = 3;
+
+            console.log(`发送SDI参数设置: ID=${camId}, Type=${type}, Val=${val}`);
+            this.socket.emit('camera_set_param', {
+                cameraId: camId,
+                type: type,
+                value: val
+            });
+        },
+        // 同步SDI设置
+        syncSDISettings() {
+            const config = this.cameraConfigs.find(c => c.id === 3);
+            if (config) {
+                this.sdiParams.threshold = config.threshold || 128;
+                this.sdiParams.brightness = config.brightness || 136;
+                this.sdiParams.contrast = config.contrast || 146;
+                this.sdiParams.saturation = config.saturation || 136;
+                this.sdiParams.hue = config.hue || 0;
+            }
         },
         applyAllCameraParams(camId) {
-            if (camId === 3) return;
+            // 只对MvCamera相机应用（1和2）
+            if (camId === 3 || camId === 4) return;
             const config = this.cameraConfigs.find(c => c.id === camId);
             if (!config) return;
 
@@ -809,6 +1147,95 @@ var vm = new Vue({
                 }
             });
         },
+        // ===================== 高级参数方法 =====================
+        // 设置实时参数（仅MvCamera）
+        setLiveParam(type) {
+            if (!this.isConnected || this.cameraType !== 'mvcamera') return;
+
+            const val = this.liveParams[type];
+            const camId = this.getCameraIntId(this.selectedCamera);
+
+            console.log(`设置高级参数: ID=${camId}, Type=${type}, Val=${val}`);
+            this.socket.emit('camera_set_param', {
+                cameraId: camId,
+                type: type,
+                value: val
+            });
+        },
+        // 从相机刷新所有参数（仅MvCamera）
+        refreshLiveParams() {
+            if (!this.isConnected || this.cameraType !== 'mvcamera') {
+                this.$message.warning('请先连接MvCamera相机（相机1或2）');
+                return;
+            }
+
+            const camId = this.getCameraIntId(this.selectedCamera);
+
+            // 请求获取所有参数
+            axios.post('/api/camera/all-params', { cameraId: camId })
+                .then(res => {
+                    if (res.data.success && res.data.params) {
+                        const params = res.data.params;
+                        // 更新本地参数
+                        if (params.exposureTime !== undefined && params.exposureTime !== -1) this.liveParams.exposureTime = params.exposureTime;
+                        if (params.frameRate !== undefined && params.frameRate !== -1) this.liveParams.frameRate = params.frameRate;
+                        if (params.gain !== undefined && params.gain !== -1) this.liveParams.gain = params.gain;
+                        if (params.threshold !== undefined) this.liveParams.threshold = params.threshold;
+                        if (params.width !== undefined && params.width !== -1) this.liveParams.width = params.width;
+                        if (params.height !== undefined && params.height !== -1) this.liveParams.height = params.height;
+                        if (params.offsetX !== undefined && params.offsetX !== -1) this.liveParams.offsetX = params.offsetX;
+                        if (params.offsetY !== undefined && params.offsetY !== -1) this.liveParams.offsetY = params.offsetY;
+                        if (params.gamma !== undefined && params.gamma !== -1) this.liveParams.gamma = params.gamma;
+                        if (params.blackLevel !== undefined && params.blackLevel !== -1) this.liveParams.blackLevel = params.blackLevel;
+                        if (params.reverseX !== undefined) this.liveParams.reverseX = params.reverseX;
+                        if (params.reverseY !== undefined) this.liveParams.reverseY = params.reverseY;
+                        if (params.exposureAuto !== undefined && params.exposureAuto !== -1) this.liveParams.exposureAuto = params.exposureAuto;
+                        if (params.gainAuto !== undefined && params.gainAuto !== -1) this.liveParams.gainAuto = params.gainAuto;
+                        if (params.triggerMode !== undefined && params.triggerMode !== -1) this.liveParams.triggerMode = params.triggerMode;
+
+                        this.$message.success('参数刷新成功');
+                    } else {
+                        this.$message.error(res.data.message || '获取参数失败');
+                    }
+                })
+                .catch(err => {
+                    this.$message.error('获取参数失败: ' + err.message);
+                });
+        },
+        // 将保存的配置应用到实时相机
+        applyConfigToLive() {
+            if (!this.isConnected || this.isVirtualCamera) return;
+
+            const camId = this.getCameraIntId(this.selectedCamera);
+            const config = this.cameraConfigs.find(c => c.id === camId);
+            if (!config) return;
+
+            // 应用保存的配置
+            ['exposureTime', 'frameRate', 'gain', 'threshold'].forEach(type => {
+                if (config[type] !== undefined) {
+                    this.liveParams[type] = config[type];
+                    this.socket.emit('camera_set_param', {
+                        cameraId: camId,
+                        type: type,
+                        value: config[type]
+                    });
+                }
+            });
+
+            this.$message.success('已应用默认配置');
+        },
+        // 执行软触发
+        executeSoftwareTrigger() {
+            if (!this.isConnected || this.isVirtualCamera) return;
+
+            const camId = this.getCameraIntId(this.selectedCamera);
+            this.socket.emit('camera_set_param', {
+                cameraId: camId,
+                type: 'softwareTrigger',
+                value: 1
+            });
+        },
+        // ===================== 高级参数方法结束 =====================
         getCameraIntId(camValue){
             // 从最开始的map，改为直接输出即可
             // return {'cam1' : 1, 'cam2' : 2, 'cam3' : 3}[camValue] || 1;
@@ -817,34 +1244,25 @@ var vm = new Vue({
         connectCamera(){
             if(!this.cameraEnabled) return;
             const camId = this.getCameraIntId(this.selectedCamera);
-            if(camId === 3){
-                console.log("连接相机3（预留）");
-                this.isConnected = true;
-                this.showStaticImage();
-                this.$message.success("相机3（预留）已连接");
-                return;
-            }
 
             console.log('正在请求连接相机 ID:', camId);
             if(!this.socket){
                 this.$message.error('Socket 服务未连接');
                 return;
             }
+
+            // 所有相机（包括虚拟相机3）都通过SocketIO连接
             this.socket.emit('camera_connect', {cameraId: camId});
         },
         disconnectCamera(camValue){
             const camId = this.getCameraIntId(camValue || this.selectedCamera);
-            if(camId === 3){
-                console.log("断开相机3（预留）");
-                this.isConnected = false;
-                this.initCanvas();
-                return;
-            }
 
             if(this.socket){
                 this.socket.emit('camera_disconnect',{cameraId: camId});
             }
             this.isConnected = false;
+            this.isVirtualCamera = false;
+            this.cameraType = 'mvcamera';
             this.initCanvas();
         },
         // 测试使用，相机3还没接入时使用静态图片代替
@@ -907,12 +1325,31 @@ var vm = new Vue({
                 if(data.success) {
                     this.isConnected = true;
                     this.cameraEnabled = true;
+                    this.isVirtualCamera = data.isVirtualCamera || false;
+                    this.cameraType = data.cameraType || 'mvcamera';
+
+                    // 虚拟相机（相机4）不需要加载SDK参数
+                    if(this.cameraType === 'virtual'){
+                        this.$message.success(data.message || "虚拟相机已就绪，请上传图像文件");
+                        return;
+                    }
+
+                    // SDI相机（相机3）加载SDI配置
+                    if(this.cameraType === 'sdi'){
+                        this.loadCameraConfig(()=>{
+                            this.syncSDISettings();
+                            this.$message.success(data.message || "SDI采集已连接");
+                        });
+                        return;
+                    }
+
+                    // MvCamera真实相机（相机1/2）：加载并应用配置
                     this.loadCameraConfig(()=>{
                         const currentId = this.getCameraIntId(this.selectedCamera);
                         if(data.cameraId === currentId){
                             this.applyAllCameraParams(currentId);
                             this.syncCurrentCamSettings();
-                            this.$message.success("相机已连接，以应用默认配置");
+                            this.$message.success("相机已连接，已应用默认配置");
                         }
                     })
                 }
@@ -1025,7 +1462,7 @@ var vm = new Vue({
 
             this.viewRect = { x: newX, y: newY, w: newW, h: newH };
 
-            if (this.selectedCamera === 3) {
+            if (this.selectedCamera === 4) {
                 this.showStaticImage();
             }
         },
@@ -1036,7 +1473,7 @@ var vm = new Vue({
             this.selectionStart = {x:0, y:0};
             this.selectionCurrent = {x:0, y:0};
 
-            if (this.selectedCamera === 3) {
+            if (this.selectedCamera === 4) {
                 this.showStaticImage();
             }
         },
@@ -1139,23 +1576,31 @@ var vm = new Vue({
             this.ctx.arc(x, y, 5, 0, 2 * Math.PI);// 半径为5
             this.ctx.fill();
         },
-        // 处理图片上传
+        // 处理图片上传 - 发送到后端进行质心分析
         handleImageUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
 
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                // 将读取到的 Base64 数据存入变量（复用 camera3Source）
-                this.camera3Source = evt.target.result;
-                
-                // 如果当前正好选中了相机3且开关是开的，立即刷新显示
-                if (this.selectedCamera === 3 && this.cameraEnabled) {
-                    this.showStaticImage();
-                    this.$message.success('图片加载成功');
+            // 创建FormData发送到后端API
+            const formData = new FormData();
+            formData.append('image', file);
+
+            axios.post('/api/virtual-camera/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            }).then(res => {
+                if (res.data.success && res.data.frameData) {
+                    // 使用后端返回的帧数据（包含质心计算结果）
+                    this.handleNewFrame(res.data.frameData);
+                    this.$message.success('图片上传成功，已计算质心');
+                } else {
+                    this.$message.error(res.data.message || '图片处理失败');
                 }
-            };
-            reader.readAsDataURL(file);
+            }).catch(err => {
+                this.$message.error('图片上传失败: ' + err.message);
+            });
+
+            // 清空input以便重复选择同一文件
+            e.target.value = '';
         },
         sendCmd(device, cmd, params = {}, wait_response = false, successMsg = "指令发送成功"){
             axios.post('/api/command/send',{

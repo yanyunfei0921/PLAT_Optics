@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /B \"D:\\\\ATE\\\\251028CF_REBUILD\\\\PLAT_Optics\\\\static\")",
+      "Bash(dir /B \"D:\\\\ATE\\\\251028CF_REBUILD\\\\PLAT_Optics\\\\templates\")",
+      "Bash(wc:*)",
+      "Bash(tree:*)",
+      "Bash(dir /B \"C:\\\\Program Files \\(x86\\)\\\\MVS\\\\Development\\\\Samples\\\\Python\\\\General\")",
+      "Bash(dir /B \"D:\\\\ATE\\\\251028CF_REBUILD\\\\SDI\\\\HWS_SDK_20240301\\(1\\)\\\\App\\\\CHTest\\\\python\")",
+      "Bash(git add:*)"
+    ]
+  }
+}

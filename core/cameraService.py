@@ -12,24 +12,37 @@ sys.path.append(os.getenv('MVCAM_COMMON_RUNENV') + "/Samples/python/MvImport")
 from MvCameraControl_class import *  # type: ignore
 
 class CameraService:
-    def __init__(self, nConnectionNum):
+    """
+    相机服务类 - 管理MvCamera SDK相机的连接、采集和图像处理
+
+    支持GigE Vision工业相机，提供帧采集、质心计算和实时流推送功能。
+    """
+
+    def __init__(self, nConnectionNum: int):
+        """
+        初始化相机服务
+
+        Args:
+            nConnectionNum: 相机设备索引号(从0开始)
+        """
         self.deviceList = None
         self.nConnectionNum = nConnectionNum
-        self.tlayerType = (MV_GIGE_DEVICE)
+        self.tlayerType = MV_GIGE_DEVICE
         self.cam = None
-        self.hwnd = None    #测试用显示窗口句柄
-        self.winName = "testDisplayWin"
-        self.stFloatValue = None    #浮点类型值
-        self.running = False    #是否在传输
+        self.stFloatValue = None
+        self.running = False
         self.threshold = 128
         self.return_binary_image = False
-        self.frame_queue = deque(maxlen=2) #图像队列
+        self.frame_queue = deque(maxlen=2)
         self.hThreadHandle = None
 
-    def initCamera(self):
-        # init 和 destory 这两个SDK相关函数改为在app.py文件中调用，而这里仅保留单个相机的创建和销毁
-        # MvCamera.MV_CC_Initialize()
+    def initCamera(self) -> bool:
+        """
+        初始化相机 - 枚举设备并选择指定索引的相机
 
+        Returns:
+            bool: 初始化成功返回True，失败返回False
+        """
         self.deviceList = MV_CC_DEVICE_INFO_LIST()
     
         ret = MvCamera.MV_CC_EnumDevices(self.tlayerType, self.deviceList)
@@ -59,24 +72,20 @@ class CameraService:
         # self.nConnectionNum = input("please input the number of the device to connect:")
 
         if int(self.nConnectionNum) >= self.deviceList.nDeviceNum:
-            print ("intput error!")
+            print("input error!")
             return False
-
-        # 直接窗口显示代码
-        # DEBUG        
-        # cv2.namedWindow(self.winName, cv2.WINDOW_NORMAL)
-        # cv2.resizeWindow(self.winName, 1280, 1024)
-        # self.hwnd = ctypes.windll.user32.FindWindowW(None, self.winName)
-        # if not self.hwnd:
-        #     print("error: find hwnd failed")
-        #     return False
-        # DEBUG END
 
         self.stFloatValue = MVCC_FLOATVALUE()
 
         return True
 
-    def connectAndOpenCamera(self):
+    def connectAndOpenCamera(self) -> bool:
+        """
+        连接并打开相机 - 创建句柄、打开设备并开始采集
+
+        Returns:
+            bool: 成功返回True，失败返回False
+        """
         if self.cam is not None:
             self.closeAndDisconnectCamera()
         self.cam = MvCamera()
@@ -124,13 +133,22 @@ class CameraService:
             self.running = True
             self.hThreadHandle = threading.Thread(target=self.work_thread, args=(None, None))
             self.hThreadHandle.start()
-        except:
+        except RuntimeError as e:
             self.running = False
-            print("error: unable to start thread")
+            print(f"error: unable to start thread - {e}")
+        except Exception as e:
+            self.running = False
+            print(f"error: unexpected error starting thread - {e}")
 
         return True
 
-    def closeAndDisconnectCamera(self):
+    def closeAndDisconnectCamera(self) -> bool:
+        """
+        关闭并断开相机 - 停止采集、关闭设备并销毁句柄
+
+        Returns:
+            bool: 成功返回True
+        """
         self.running = False
         if self.cam is None:
             return True
@@ -176,21 +194,6 @@ class CameraService:
                 if not self.running:
                     self.cam.MV_CC_FreeImageBuffer(stOutFrame)
                     break
-                # print ("get one frame: Width[%d], Height[%d], nFrameNum[%d]"  % (stOutFrame.stFrameInfo.nWidth, stOutFrame.stFrameInfo.nHeight, stOutFrame.stFrameInfo.nFrameNum))
-                
-                # DEBUG
-                # 最初用于直接窗口显示图像的代码
-                # displayimage = MV_CC_IMAGE()
-                # displayimage.nWidth = stOutFrame.stFrameInfo.nWidth 
-                # displayimage.nHeight =  stOutFrame.stFrameInfo.nHeight 
-                # displayimage.enPixelType =  stOutFrame.stFrameInfo.enPixelType 
-                # displayimage.pImageBuf = stOutFrame.pBufAddr
-                # displayimage.nImageBuffSize = stOutFrame.stFrameInfo.nFrameLen
-                # displayimage.nImageLen =    stOutFrame.stFrameInfo.nFrameLen
-                # ret = self.cam.MV_CC_DisplayOneFrameEx2(int(self.hwnd),displayimage, 0)
-                # if ret != 0:
-                #     print ("MV_CC_DisplayOneFrameEx2 fail! ret[0x%x]" % ret)
-                # DEBUG END
 
                 nWidth = stOutFrame.stFrameInfo.nWidth
                 nHeight = stOutFrame.stFrameInfo.nHeight
@@ -260,19 +263,19 @@ class CameraService:
             return -1
         return self.stFloatValue.fCurValue
 
-    def setExpsureTime(self, time):
+    def setExposureTime(self, time):
         self.cam.MV_CC_SetEnumValue("ExposureAuto", 0)
         ret = self.cam.MV_CC_SetFloatValue("ExposureTime", time)
         if ret != 0:
-            print("set expsure time fail! ret[0x%x]" % ret)
+            print("set exposure time fail! ret[0x%x]" % ret)
             return False
         return True
-    
-    def getExpsureTime(self):
-        memset(byref(self.stFloatValue), 0 ,sizeof(MVCC_FLOATVALUE))
+
+    def getExposureTime(self):
+        memset(byref(self.stFloatValue), 0, sizeof(MVCC_FLOATVALUE))
         ret = self.cam.MV_CC_GetFloatValue("ExposureTime", self.stFloatValue)
         if ret != 0:
-            print("get expsure time fail! ret[0x%x]" % ret)
+            print("get exposure time fail! ret[0x%x]" % ret)
             return -1
         return self.stFloatValue.fCurValue
 
@@ -304,21 +307,34 @@ class CameraService:
     def getThreshold(self):
         return self.threshold
 
-    def centroidExtract(self, gray_image, frame_num):
+    def centroidExtract(self, gray_image: np.ndarray, frame_num: int) -> dict:
+        """
+        提取图像质心并编码为JPEG
+
+        使用cv2.moments()计算强度加权质心，比numpy循环更快。
+        阈值以下的像素被设为0，质心基于阈值以上像素的灰度强度加权计算。
+
+        Args:
+            gray_image: 灰度图像 (Mono8)
+            frame_num: 帧编号
+
+        Returns:
+            dict: 包含图像base64、尺寸、质心坐标等信息，失败返回None
+        """
         th = int(self.threshold)
         _, binary = cv2.threshold(gray_image, th, 255, cv2.THRESH_BINARY)
-        mask = binary > 0
-        if np.any(mask):
-            ys, xs = np.nonzero(mask)
-            intensities = gray_image[ys, xs].astype(np.float64)
-            wsum = intensities.sum()
-            cx = (xs * intensities).sum() / wsum
-            cy = (ys * intensities).sum() / wsum
+
+        # 创建掩码图像：阈值以下像素设为0，保留原始灰度值用于加权计算
+        # 使用cv2.moments()计算强度加权质心，C优化比numpy循环更快
+        masked = np.where(binary > 0, gray_image, 0).astype(np.float64)
+        M = cv2.moments(masked)
+
+        if M["m00"] > 0:
+            cx = M["m10"] / M["m00"]
+            cy = M["m01"] / M["m00"]
         else:
             cx, cy = -1.0, -1.0
 
-        # ok, buf = cv2.imencode('.jpg', gray_image)
-        # ok, buf = cv2.imencode('.jpg', binary)
         target_image = binary if self.return_binary_image else gray_image
         ok, buf = cv2.imencode('.jpg', target_image)
         if ok:
@@ -351,6 +367,408 @@ class CameraService:
 
     def getLatestFrame(self):
         return self.frame_queue.pop() if self.frame_queue else None
+
+    # ======================== 高级参数设置方法 ========================
+
+    def getWidth(self) -> int:
+        """获取图像宽度"""
+        stIntValue = MVCC_INTVALUE_EX()
+        memset(byref(stIntValue), 0, sizeof(stIntValue))
+        ret = self.cam.MV_CC_GetIntValueEx("Width", stIntValue)
+        if ret != 0:
+            print(f"get Width fail! ret[0x{ret:x}]")
+            return -1
+        return stIntValue.nCurValue
+
+    def setWidth(self, width: int) -> bool:
+        """设置图像宽度"""
+        ret = self.cam.MV_CC_SetIntValueEx("Width", int(width))
+        if ret != 0:
+            print(f"set Width fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getHeight(self) -> int:
+        """获取图像高度"""
+        stIntValue = MVCC_INTVALUE_EX()
+        memset(byref(stIntValue), 0, sizeof(stIntValue))
+        ret = self.cam.MV_CC_GetIntValueEx("Height", stIntValue)
+        if ret != 0:
+            print(f"get Height fail! ret[0x{ret:x}]")
+            return -1
+        return stIntValue.nCurValue
+
+    def setHeight(self, height: int) -> bool:
+        """设置图像高度"""
+        ret = self.cam.MV_CC_SetIntValueEx("Height", int(height))
+        if ret != 0:
+            print(f"set Height fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getOffsetX(self) -> int:
+        """获取X偏移"""
+        stIntValue = MVCC_INTVALUE_EX()
+        memset(byref(stIntValue), 0, sizeof(stIntValue))
+        ret = self.cam.MV_CC_GetIntValueEx("OffsetX", stIntValue)
+        if ret != 0:
+            print(f"get OffsetX fail! ret[0x{ret:x}]")
+            return -1
+        return stIntValue.nCurValue
+
+    def setOffsetX(self, offset: int) -> bool:
+        """设置X偏移"""
+        ret = self.cam.MV_CC_SetIntValueEx("OffsetX", int(offset))
+        if ret != 0:
+            print(f"set OffsetX fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getOffsetY(self) -> int:
+        """获取Y偏移"""
+        stIntValue = MVCC_INTVALUE_EX()
+        memset(byref(stIntValue), 0, sizeof(stIntValue))
+        ret = self.cam.MV_CC_GetIntValueEx("OffsetY", stIntValue)
+        if ret != 0:
+            print(f"get OffsetY fail! ret[0x{ret:x}]")
+            return -1
+        return stIntValue.nCurValue
+
+    def setOffsetY(self, offset: int) -> bool:
+        """设置Y偏移"""
+        ret = self.cam.MV_CC_SetIntValueEx("OffsetY", int(offset))
+        if ret != 0:
+            print(f"set OffsetY fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getGamma(self) -> float:
+        """获取Gamma值"""
+        memset(byref(self.stFloatValue), 0, sizeof(MVCC_FLOATVALUE))
+        ret = self.cam.MV_CC_GetFloatValue("Gamma", self.stFloatValue)
+        if ret != 0:
+            print(f"get Gamma fail! ret[0x{ret:x}]")
+            return -1.0
+        return self.stFloatValue.fCurValue
+
+    def setGamma(self, gamma: float) -> bool:
+        """设置Gamma值"""
+        # 先启用Gamma
+        self.cam.MV_CC_SetBoolValue("GammaEnable", True)
+        ret = self.cam.MV_CC_SetFloatValue("Gamma", float(gamma))
+        if ret != 0:
+            print(f"set Gamma fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getBlackLevel(self) -> float:
+        """获取黑电平"""
+        memset(byref(self.stFloatValue), 0, sizeof(MVCC_FLOATVALUE))
+        ret = self.cam.MV_CC_GetFloatValue("BlackLevel", self.stFloatValue)
+        if ret != 0:
+            print(f"get BlackLevel fail! ret[0x{ret:x}]")
+            return -1.0
+        return self.stFloatValue.fCurValue
+
+    def setBlackLevel(self, level: float) -> bool:
+        """设置黑电平"""
+        ret = self.cam.MV_CC_SetFloatValue("BlackLevel", float(level))
+        if ret != 0:
+            print(f"set BlackLevel fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getReverseX(self) -> bool:
+        """获取X镜像状态"""
+        bValue = c_bool(False)
+        ret = self.cam.MV_CC_GetBoolValue("ReverseX", bValue)
+        if ret != 0:
+            print(f"get ReverseX fail! ret[0x{ret:x}]")
+            return False
+        return bValue.value
+
+    def setReverseX(self, enable: bool) -> bool:
+        """设置X镜像"""
+        ret = self.cam.MV_CC_SetBoolValue("ReverseX", bool(enable))
+        if ret != 0:
+            print(f"set ReverseX fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getReverseY(self) -> bool:
+        """获取Y镜像状态"""
+        bValue = c_bool(False)
+        ret = self.cam.MV_CC_GetBoolValue("ReverseY", bValue)
+        if ret != 0:
+            print(f"get ReverseY fail! ret[0x{ret:x}]")
+            return False
+        return bValue.value
+
+    def setReverseY(self, enable: bool) -> bool:
+        """设置Y镜像"""
+        ret = self.cam.MV_CC_SetBoolValue("ReverseY", bool(enable))
+        if ret != 0:
+            print(f"set ReverseY fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getTriggerMode(self) -> int:
+        """获取触发模式 (0=Off, 1=On)"""
+        stEnumValue = MVCC_ENUMVALUE()
+        memset(byref(stEnumValue), 0, sizeof(stEnumValue))
+        ret = self.cam.MV_CC_GetEnumValue("TriggerMode", stEnumValue)
+        if ret != 0:
+            print(f"get TriggerMode fail! ret[0x{ret:x}]")
+            return -1
+        return stEnumValue.nCurValue
+
+    def setTriggerMode(self, mode: int) -> bool:
+        """设置触发模式 (0=Off, 1=On)"""
+        ret = self.cam.MV_CC_SetEnumValue("TriggerMode", int(mode))
+        if ret != 0:
+            print(f"set TriggerMode fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getTriggerSource(self) -> int:
+        """获取触发源"""
+        stEnumValue = MVCC_ENUMVALUE()
+        memset(byref(stEnumValue), 0, sizeof(stEnumValue))
+        ret = self.cam.MV_CC_GetEnumValue("TriggerSource", stEnumValue)
+        if ret != 0:
+            print(f"get TriggerSource fail! ret[0x{ret:x}]")
+            return -1
+        return stEnumValue.nCurValue
+
+    def setTriggerSource(self, source: int) -> bool:
+        """设置触发源 (0=Line0, 1=Line1, 7=Software)"""
+        ret = self.cam.MV_CC_SetEnumValue("TriggerSource", int(source))
+        if ret != 0:
+            print(f"set TriggerSource fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def softwareTrigger(self) -> bool:
+        """软触发一次"""
+        ret = self.cam.MV_CC_SetCommandValue("TriggerSoftware")
+        if ret != 0:
+            print(f"software trigger fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getExposureAuto(self) -> int:
+        """获取自动曝光模式 (0=Off, 1=Once, 2=Continuous)"""
+        stEnumValue = MVCC_ENUMVALUE()
+        memset(byref(stEnumValue), 0, sizeof(stEnumValue))
+        ret = self.cam.MV_CC_GetEnumValue("ExposureAuto", stEnumValue)
+        if ret != 0:
+            print(f"get ExposureAuto fail! ret[0x{ret:x}]")
+            return -1
+        return stEnumValue.nCurValue
+
+    def setExposureAuto(self, mode: int) -> bool:
+        """设置自动曝光模式 (0=Off, 1=Once, 2=Continuous)"""
+        ret = self.cam.MV_CC_SetEnumValue("ExposureAuto", int(mode))
+        if ret != 0:
+            print(f"set ExposureAuto fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getGainAuto(self) -> int:
+        """获取自动增益模式 (0=Off, 1=Once, 2=Continuous)"""
+        stEnumValue = MVCC_ENUMVALUE()
+        memset(byref(stEnumValue), 0, sizeof(stEnumValue))
+        ret = self.cam.MV_CC_GetEnumValue("GainAuto", stEnumValue)
+        if ret != 0:
+            print(f"get GainAuto fail! ret[0x{ret:x}]")
+            return -1
+        return stEnumValue.nCurValue
+
+    def setGainAuto(self, mode: int) -> bool:
+        """设置自动增益模式 (0=Off, 1=Once, 2=Continuous)"""
+        ret = self.cam.MV_CC_SetEnumValue("GainAuto", int(mode))
+        if ret != 0:
+            print(f"set GainAuto fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def getAllParams(self) -> dict:
+        """获取所有参数的当前值"""
+        params = {
+            'width': self.getWidth(),
+            'height': self.getHeight(),
+            'offsetX': self.getOffsetX(),
+            'offsetY': self.getOffsetY(),
+            'exposureTime': self.getExposureTime(),
+            'exposureAuto': self.getExposureAuto(),
+            'gain': self.getGain(),
+            'gainAuto': self.getGainAuto(),
+            'frameRate': self.getAcquisitionFrameRate(),
+            'gamma': self.getGamma(),
+            'blackLevel': self.getBlackLevel(),
+            'reverseX': self.getReverseX(),
+            'reverseY': self.getReverseY(),
+            'triggerMode': self.getTriggerMode(),
+            'threshold': self.getThreshold(),
+        }
+        return params
+
+    def saveFeatureFile(self, filename: str) -> bool:
+        """保存相机配置到文件"""
+        ret = self.cam.MV_CC_FeatureSave(filename)
+        if ret != 0:
+            print(f"save feature fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+    def loadFeatureFile(self, filename: str) -> bool:
+        """从文件加载相机配置"""
+        ret = self.cam.MV_CC_FeatureLoad(filename)
+        if ret != 0:
+            print(f"load feature fail! ret[0x{ret:x}]")
+            return False
+        return True
+
+
+class VirtualCameraService:
+    """
+    虚拟相机服务类 - 用于静态图像上传和分析
+
+    不连接实际硬件，允许用户上传本地图像文件进行质心计算等分析。
+    """
+
+    def __init__(self, camera_id: int = 3):
+        """
+        初始化虚拟相机服务
+
+        Args:
+            camera_id: 虚拟相机ID (默认为3)
+        """
+        self.camera_id = camera_id
+        self.running = False
+        self.threshold = 128
+        self.return_binary_image = False
+        self.current_image = None
+        self.frame_queue = deque(maxlen=2)
+        self.frame_num = 0
+        self.cam = None  # 用于兼容性检查
+
+    def uploadImage(self, image_data: bytes, filename: str = "") -> dict:
+        """
+        上传图像文件
+
+        Args:
+            image_data: 图像二进制数据
+            filename: 文件名
+
+        Returns:
+            dict: 包含处理结果的字典
+        """
+        try:
+            # 从字节数据解码图像
+            nparr = np.frombuffer(image_data, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+
+            if img is None:
+                return {'success': False, 'message': '无法解析图像文件'}
+
+            self.current_image = img
+            self.frame_num += 1
+
+            # 计算质心并生成帧数据
+            frame_data = self.centroidExtract(img, self.frame_num)
+            if frame_data:
+                self.frame_queue.append(frame_data)
+                return {'success': True, 'message': '图像上传成功', 'frameData': frame_data}
+            else:
+                return {'success': False, 'message': '图像处理失败'}
+
+        except Exception as e:
+            return {'success': False, 'message': f'上传失败: {str(e)}'}
+
+    def centroidExtract(self, gray_image: np.ndarray, frame_num: int) -> dict:
+        """
+        提取图像质心并编码为JPEG (与CameraService保持一致)
+        """
+        th = int(self.threshold)
+        _, binary = cv2.threshold(gray_image, th, 255, cv2.THRESH_BINARY)
+
+        masked = np.where(binary > 0, gray_image, 0).astype(np.float64)
+        M = cv2.moments(masked)
+
+        if M["m00"] > 0:
+            cx = M["m10"] / M["m00"]
+            cy = M["m01"] / M["m00"]
+        else:
+            cx, cy = -1.0, -1.0
+
+        target_image = binary if self.return_binary_image else gray_image
+        ok, buf = cv2.imencode('.jpg', target_image)
+        if ok:
+            image_base64 = base64.b64encode(buf.tobytes()).decode('ascii')
+        else:
+            return None
+
+        nHeight, nWidth = gray_image.shape[:2]
+
+        frame_data = {
+            'image': f'data:image/jpeg;base64,{image_base64}',
+            'width': int(nWidth),
+            'height': int(nHeight),
+            'centroidX': float(cx),
+            'centroidY': float(cy),
+            'frameNum': int(frame_num),
+            'cameraId': self.camera_id
+        }
+
+        return frame_data
+
+    def setThreshold(self, threshold: int) -> bool:
+        """设置二值化阈值"""
+        threshold = int(threshold)
+        if threshold < 0:
+            threshold = 0
+        if threshold > 255:
+            threshold = 255
+        self.threshold = threshold
+        # 如果有当前图像，重新处理
+        if self.current_image is not None:
+            self.frame_num += 1
+            frame_data = self.centroidExtract(self.current_image, self.frame_num)
+            if frame_data:
+                self.frame_queue.append(frame_data)
+        return True
+
+    def getThreshold(self) -> int:
+        """获取二值化阈值"""
+        return self.threshold
+
+    def setReturnBinaryMode(self, is_binary: bool) -> bool:
+        """设置是否返回二值化图像"""
+        self.return_binary_image = bool(is_binary)
+        # 如果有当前图像，重新处理
+        if self.current_image is not None:
+            self.frame_num += 1
+            frame_data = self.centroidExtract(self.current_image, self.frame_num)
+            if frame_data:
+                self.frame_queue.append(frame_data)
+        return True
+
+    def getLatestFrame(self) -> dict:
+        """获取最新帧"""
+        return self.frame_queue.pop() if self.frame_queue else None
+
+    def reprocessImage(self) -> dict:
+        """重新处理当前图像 (用于参数变更后)"""
+        if self.current_image is None:
+            return {'success': False, 'message': '没有已上传的图像'}
+
+        self.frame_num += 1
+        frame_data = self.centroidExtract(self.current_image, self.frame_num)
+        if frame_data:
+            self.frame_queue.append(frame_data)
+            return {'success': True, 'frameData': frame_data}
+        return {'success': False, 'message': '图像处理失败'}
 
 
 if __name__ == "__main__":

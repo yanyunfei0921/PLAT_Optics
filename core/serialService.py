@@ -43,8 +43,10 @@ class SerialService:
             if device_key in self._serial_connections:
                 try:
                     self._serial_connections[device_key].close()
-                except:
-                    pass
+                except serial.SerialException as e:
+                    print(f"Warning: Failed to close existing connection for {device_key}: {e}")
+                except Exception as e:
+                    print(f"Warning: Unexpected error closing connection for {device_key}: {e}")
                 del self._serial_connections[device_key]
             
             # 如果已存在接收数据缓存，清空
@@ -282,9 +284,9 @@ class SerialService:
         """
         status = {}
         for device_key in devices_key:
-            is_connected = serial_service.is_connected(device_key)
+            is_connected = self.is_connected(device_key)
             status[device_key] = is_connected
-        
+
         return status
 
 
