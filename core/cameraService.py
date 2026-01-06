@@ -22,6 +22,7 @@ class CameraService:
         self.stFloatValue = None    #浮点类型值
         self.running = False    #是否在传输
         self.threshold = 128
+        self.return_binary_image = False
         self.frame_queue = deque(maxlen=2) #图像队列
         self.hThreadHandle = None
 
@@ -291,6 +292,18 @@ class CameraService:
             return -1
         return self.stFloatValue.fCurValue
 
+    def setThreshold(self, threshold):
+        threshold = int(threshold)
+        if threshold < 0:
+            threshold = 0
+        if threshold > 255:
+            threshold = 255
+        self.threshold = threshold
+        return True
+
+    def getThreshold(self):
+        return self.threshold
+
     def centroidExtract(self, gray_image, frame_num):
         th = int(self.threshold)
         _, binary = cv2.threshold(gray_image, th, 255, cv2.THRESH_BINARY)
@@ -304,7 +317,10 @@ class CameraService:
         else:
             cx, cy = -1.0, -1.0
 
-        ok, buf = cv2.imencode('.jpg', gray_image)
+        # ok, buf = cv2.imencode('.jpg', gray_image)
+        # ok, buf = cv2.imencode('.jpg', binary)
+        target_image = binary if self.return_binary_image else gray_image
+        ok, buf = cv2.imencode('.jpg', target_image)
         if ok:
             image_base64 = base64.b64encode(buf.tobytes()).decode('ascii')
         else:
@@ -326,6 +342,12 @@ class CameraService:
         }
 
         return frame_data
+
+    def setReturnBinaryMode(self, is_binary):
+        """设置是否返回二值化图像"""
+        self.return_binary_image = bool(is_binary)
+        # print(f"Camera [{self.nConnectionNum}] return binary mode: {self.return_binary_image}")
+        return True
 
     def getLatestFrame(self):
         return self.frame_queue.pop() if self.frame_queue else None

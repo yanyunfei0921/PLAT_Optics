@@ -109,6 +109,22 @@
         .text-placeholder { color: #C0C4CC; } /* 未输入：灰色 */
         .text-value { color: #303133; font-weight: 600; } /* 已输入：加深高亮 */
         .text-highlight-red { color: #F56C6C; font-weight: bold; font-size: 15px; } /* 最终结果：红色加粗 */
+
+        /* --- 新增：针对相机显示区的头部样式覆写 --- */
+        .area-cam .panel__hd {
+            flex-direction: column;  /* 改为纵向排列：标题在上，按钮在下 */
+            align-items: flex-start; /* 内容左对齐 */
+            gap: 6px;                /* 标题和按钮之间的间距 */
+            padding: 6px 10px;       /* 稍微调整内边距以保持紧凑 */
+            height: auto;            /* 允许高度随内容自动撑开 */
+        }
+
+        /* 确保原来右侧的工具栏占满宽度或保持左对齐，并处理间距 */
+        .area-cam .panel__hd .toolbar {
+            margin-top: 2px;         /* 增加一点顶部微调 */
+            width: 100%;             /* 让工具栏宽度铺开 */
+            justify-content: flex-start; /* 按钮从左侧开始排列 */
+        }
     </style>
 </head>
 <body>
@@ -154,6 +170,23 @@
                         <el-select v-model="selectedCamera" size="mini" placeholder="选择相机" style="width:160px">
                             <el-option v-for="cam in cameraList" :key="cam.value" :label="cam.label" :value="cam.value"></el-option>
                         </el-select>
+                        <input 
+                            type="file" 
+                            ref="uploadInput" 
+                            accept="image/*" 
+                            style="display: none" 
+                            @change="handleImageUpload"
+                        >
+                        <el-button 
+                            v-if="selectedCamera === 3" 
+                            size="mini" 
+                            type="primary" 
+                            icon="el-icon-upload2" 
+                            @click="$refs.uploadInput.click()"
+                            style="margin-right: 10px;"
+                        >
+                            上传图片
+                        </el-button>
                         <el-dropdown :hide-on-click="false" trigger="click">
                             <el-button size="mini">
                                 显示设置<i class="el-icon-arrow-down el-icon--right"></i>
@@ -576,7 +609,22 @@ var vm = new Vue({
                 if(oldVal) this.disconnectCamera(oldVal);
                 this.$nextTick(() => { this.connectCamera(); });
             }
-        }
+        },
+        showOriginal(newVal) {
+            if (this.isConnected) {
+                // 如果勾选(true)，发 0 (原图)；如果取消勾选(false)，发 1 (二值化)
+                // 或者反过来，看你的习惯。
+                // 这里假设：勾选=看原图(value=0)，不勾选=看二值化(value=1)
+                const valToSend = newVal ? 0 : 1;
+                
+                const camId = this.getCameraIntId(this.selectedCamera);
+                this.socket.emit('camera_set_param', {
+                    cameraId: camId,
+                    type: 'imageMode',
+                    value: valToSend
+                });
+            }
+        },
     },
     methods: {
         nextStep(){
@@ -976,6 +1024,10 @@ var vm = new Vue({
             }
 
             this.viewRect = { x: newX, y: newY, w: newW, h: newH };
+
+            if (this.selectedCamera === 3) {
+                this.showStaticImage();
+            }
         },
         resetZoom() {
             this.viewRect = null;        // 清空视口，handleNewFrame 会自动切回全图
@@ -983,6 +1035,10 @@ var vm = new Vue({
             this.isSelecting = false;    // 停止拖拽状态
             this.selectionStart = {x:0, y:0};
             this.selectionCurrent = {x:0, y:0};
+
+            if (this.selectedCamera === 3) {
+                this.showStaticImage();
+            }
         },
         handleNewFrame(data){
             if(!this.ctx || !this.cameraEnabled) return;
@@ -1082,6 +1138,24 @@ var vm = new Vue({
             this.ctx.fillStyle = 'red';
             this.ctx.arc(x, y, 5, 0, 2 * Math.PI);// 半径为5
             this.ctx.fill();
+        },
+        // 处理图片上传
+        handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                // 将读取到的 Base64 数据存入变量（复用 camera3Source）
+                this.camera3Source = evt.target.result;
+                
+                // 如果当前正好选中了相机3且开关是开的，立即刷新显示
+                if (this.selectedCamera === 3 && this.cameraEnabled) {
+                    this.showStaticImage();
+                    this.$message.success('图片加载成功');
+                }
+            };
+            reader.readAsDataURL(file);
         },
         sendCmd(device, cmd, params = {}, wait_response = false, successMsg = "指令发送成功"){
             axios.post('/api/command/send',{

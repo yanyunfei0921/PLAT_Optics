@@ -361,6 +361,7 @@ def handle_camera_set_param(data):
         'type': 'exposureTime' | 'frameRate' | 'threshold' | 'gain', 
         'value': 5000
     }
+    又加了一个'imageMode'
     """
     try:
         camera_id = data.get('cameraId', 1)
@@ -388,9 +389,15 @@ def handle_camera_set_param(data):
              message = "设置增益成功" if success else "设置增益失败"
         elif param_type == 'threshold':
             # 阈值是纯软件参数，不涉及SDK底层指令，直接设置类属性
-            cam.threshold = int(value)
-            success = True
-            message = "设置二值化阈值成功"
+            success = cam.setThreshold(value)
+            message = "设置二值化阈值成功" if success else "设置二值化阈值失败"
+        elif param_type == 'imageMode':
+            # value: 0 代表原图, 1 代表二值化图
+            # 如果前端发来 1，则开启二值化模式
+            is_binary = True if int(value) == 1 else False
+            success = cam.setReturnBinaryMode(is_binary)
+            mode_str = "二值化图" if is_binary else "原始灰度图"
+            message = f"已切换至{mode_str}" if success else "切换显示模式失败"
         else:
             message = f"未知参数类型: {param_type}"
             success = False
@@ -421,7 +428,7 @@ def handle_camera_get_param(data):
         
         # 阈值是本地变量，理论上不需要相机连接也能获取默认值，但为了统一逻辑，还是检查一下或直接返回类属性
         if param_type == 'threshold':
-            value = cam.threshold
+            value = cam.getThreshold()
             emit('camera_param_value', {'success': True, 'type': param_type, 'value': value, 'cameraId': camera_id}, room=request.sid)
             return
 

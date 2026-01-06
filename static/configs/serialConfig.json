@@ -36,8 +36,8 @@
     "light_source": {
       "baudrate": 9600,
       "dataBits": 8,
-      "parity": "None",
       "stopBits": 1,
+      "parity": "None",
       "timeout": 1000
     },
     "rail_motor": {
@@ -50,8 +50,8 @@
     "three_axis_motor": {
       "baudrate": 9600,
       "dataBits": 8,
-      "stopBits": 1,
       "parity": "None",
+      "stopBits": 1,
       "timeout": 1000
     }
   }

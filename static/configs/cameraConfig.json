@@ -2,7 +2,7 @@
   "cameras": [
     {
       "exposureTime": 5000,
-      "frameRate": 1,
+      "frameRate": 10,
       "gain": 0,
       "id": 1,
       "ip": "10.64.192.226",
@@ -15,7 +15,7 @@
       "gain": 0,
       "id": 2,
       "ip": "10.64.17.146",
-      "name": "相机2啦啦啦",
+      "name": "相机2",
       "threshold": 128
     },
     {
