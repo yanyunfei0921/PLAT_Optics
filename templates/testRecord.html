@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- JS -->
+    <script type="text/javascript" src="/static/jsscripts/vue.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/axios.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/elementui/lib-master/index.js"></script>
+
+    <!-- Element UI -->
+    <link rel="stylesheet" href="/static/jsscripts/elementui/lib-master/theme-chalk/index.css">
+
+    <title>测试记录</title>
+
+    <style>
+        /* ============ 全局基础样式 - 浅色极简工业风 ============ */
+        :root{
+            --color-bg: #f0f2f5;
+            --color-card: #ffffff;
+            --color-border: #d9d9d9;
+            --color-border-light: #e8e8e8;
+            --color-text-primary: #1f1f1f;
+            --color-text-secondary: #666666;
+            --color-text-placeholder: #999999;
+            --color-primary: #1890ff;
+            --color-success: #52c41a;
+            --color-warning: #faad14;
+            --color-danger: #f5222d;
+            --radius-sm: 2px;
+            --spacing-xs: 4px;
+            --spacing-sm: 6px;
+            --spacing-md: 8px;
+            --spacing-lg: 10px;
+        }
+        html{ height:calc(100%); }
+        body{
+            background: var(--color-bg);
+            margin:0;
+            height:100%;
+            overflow-y:auto;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--color-text-primary);
+            font-size: 13px;
+        }
+        .page{ padding:12px; max-width: 1400px; margin: 0 auto; }
+
+        /* Panel 样式 */
+        .panel{
+            background: var(--color-card);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 12px;
+        }
+        .panel__hd{
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--color-border-light);
+            font-weight: 500;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel__bd{
+            padding: 12px;
+        }
+
+        /* 工具栏 */
+        .toolbar{
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .toolbar-left{
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .toolbar-right{
+            margin-left: auto;
+            display: flex;
+            gap: 8px;
+        }
+
+        /* 标签样式 */
+        .filter-label{
+            color: var(--color-text-secondary);
+            font-size: 12px;
+        }
+
+        /* 表格样式优化 */
+        .el-table{
+            font-size: 12px;
+        }
+        .el-table th{
+            background: #fafafa !important;
+            font-weight: 500;
+        }
+        .el-table td, .el-table th{
+            padding: 8px 0;
+        }
+        .hex-cell{
+            font-family: "Consolas", "Monaco", monospace;
+            font-size: 11px;
+            word-break: break-all;
+            max-width: 200px;
+        }
+        .status-tag{
+            font-size: 11px;
+        }
+
+        /* 分页 */
+        .pagination-wrap{
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+
+        /* 光轴测试详情 */
+        .detail-grid{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        .detail-section{
+            border: 1px solid var(--color-border-light);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+        }
+        .detail-section__title{
+            font-weight: 500;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--color-border-light);
+        }
+        .detail-row{
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 12px;
+        }
+        .detail-label{
+            color: var(--color-text-secondary);
+        }
+        .detail-value{
+            font-weight: 500;
+        }
+        .detail-image{
+            max-width: 100%;
+            max-height: 200px;
+            border: 1px solid var(--color-border-light);
+            border-radius: var(--radius-sm);
+            margin-top: 8px;
+        }
+
+        /* Element UI 覆盖 */
+        .el-button{ border-radius: var(--radius-sm); }
+        .el-button--primary{ background: var(--color-primary); border-color: var(--color-primary); }
+        .el-button--success{ background: var(--color-success); border-color: var(--color-success); }
+        .el-button--danger{ background: var(--color-danger); border-color: var(--color-danger); }
+        .el-button--info{ background: #8c8c8c; border-color: #8c8c8c; }
+        .el-input__inner{ border-radius: var(--radius-sm); }
+        .el-select .el-input__inner{ border-radius: var(--radius-sm); }
+        .el-tabs__item{ font-size: 14px; }
+        .el-dialog__header{ padding: 15px 20px 10px; }
+        .el-dialog__body{ padding: 15px 20px; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="page">
+        <el-tabs v-model="activeTab" @tab-click="onTabChange">
+            <!-- ==================== 串口操作日志 ==================== -->
+            <el-tab-pane label="串口操作日志" name="serial">
+                <div class="panel">
+                    <div class="panel__hd">
+                        <span>串口操作日志 (最多保留1000条)</span>
+                    </div>
+                    <div class="panel__bd">
+                        <!-- 筛选工具栏 -->
+                        <div class="toolbar">
+                            <div class="toolbar-left">
+                                <span class="filter-label">设备:</span>
+                                <el-select v-model="serialFilter.device" placeholder="全部" clearable size="small" style="width: 120px;">
+                                    <el-option v-for="d in serialDevices" :key="d" :label="d" :value="d"></el-option>
+                                </el-select>
+
+                                <span class="filter-label">串口:</span>
+                                <el-select v-model="serialFilter.port" placeholder="全部" clearable size="small" style="width: 100px;">
+                                    <el-option v-for="p in serialPorts" :key="p" :label="p" :value="p"></el-option>
+                                </el-select>
+
+                                <el-button type="primary" size="small" @click="loadSerialLogs" :loading="serialLoading">刷新</el-button>
+                            </div>
+                            <div class="toolbar-right">
+                                <el-button type="success" size="small" @click="exportSerialLogsExcel" :disabled="serialLogs.length === 0">导出Excel</el-button>
+                                <el-button type="danger" size="small" @click="clearSerialLogs" :disabled="serialLogs.length === 0">清空日志</el-button>
+                            </div>
+                        </div>
+
+                        <!-- 日志表格 -->
+                        <el-table :data="serialLogs" border size="mini" v-loading="serialLoading" max-height="500">
+                            <el-table-column prop="id" label="ID" width="60" align="center"></el-table-column>
+                            <el-table-column prop="timestamp" label="时间" width="160">
+                                <template slot-scope="scope">{{ formatTime(scope.row.timestamp) }}</template>
+                            </el-table-column>
+                            <el-table-column prop="device" label="设备" width="100"></el-table-column>
+                            <el-table-column prop="port" label="串口" width="70"></el-table-column>
+                            <el-table-column prop="command" label="指令" width="140"></el-table-column>
+                            <el-table-column prop="params" label="参数" width="150">
+                                <template slot-scope="scope">
+                                    <span :title="scope.row.params">{{ truncateText(scope.row.params, 20) }}</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column prop="cmd_bytes" label="发送(HEX)" width="150">
+                                <template slot-scope="scope">
+                                    <span class="hex-cell" :title="scope.row.cmd_bytes">{{ scope.row.cmd_bytes || '-' }}</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column prop="response_bytes" label="返回(HEX)" width="150">
+                                <template slot-scope="scope">
+                                    <span class="hex-cell" :title="scope.row.response_bytes">{{ scope.row.response_bytes || '-' }}</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column prop="success" label="状态" width="60" align="center">
+                                <template slot-scope="scope">
+                                    <el-tag :type="scope.row.success ? 'success' : 'danger'" size="mini" class="status-tag">
+                                        {{ scope.row.success ? '成功' : '失败' }}
+                                    </el-tag>
+                                </template>
+                            </el-table-column>
+                            <el-table-column prop="message" label="消息" min-width="150">
+                                <template slot-scope="scope">
+                                    <span :title="scope.row.message">{{ truncateText(scope.row.message, 30) }}</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="操作" width="60" align="center">
+                                <template slot-scope="scope">
+                                    <el-button type="text" size="mini" style="color: var(--color-danger);" @click="deleteSerialLog(scope.row.id)">删除</el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+
+                        <!-- 分页 -->
+                        <div class="pagination-wrap">
+                            <el-pagination
+                                @current-change="handleSerialPageChange"
+                                :current-page="serialPage"
+                                :page-size="serialPageSize"
+                                :total="serialTotal"
+                                layout="total, prev, pager, next"
+                                small
+                            ></el-pagination>
+                        </div>
+                    </div>
+                </div>
+            </el-tab-pane>
+
+            <!-- ==================== 光轴测试记录 ==================== -->
+            <el-tab-pane label="光轴测试记录" name="optical">
+                <div class="panel">
+                    <div class="panel__hd">
+                        <span>光轴一致性测试记录</span>
+                    </div>
+                    <div class="panel__bd">
+                        <!-- 工具栏 -->
+                        <div class="toolbar">
+                            <div class="toolbar-left">
+                                <el-button type="primary" size="small" @click="loadOpticalTests" :loading="opticalLoading">刷新</el-button>
+                            </div>
+                            <div class="toolbar-right">
+                                <el-button type="success" size="small" @click="exportOpticalTestsExcel" :disabled="opticalTests.length === 0">导出Excel</el-button>
+                            </div>
+                        </div>
+
+                        <!-- 测试记录表格 -->
+                        <el-table :data="opticalTests" border size="mini" v-loading="opticalLoading" max-height="500">
+                            <el-table-column prop="id" label="ID" width="50" align="center"></el-table-column>
+                            <el-table-column prop="test_time" label="测试时间" width="160">
+                                <template slot-scope="scope">{{ formatTime(scope.row.test_time) }}</template>
+                            </el-table-column>
+                            <el-table-column label="基准相机" width="100">
+                                <template slot-scope="scope">
+                                    {{ scope.row.base_camera_name || scope.row.base_camera_id || '-' }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="基准偏移" width="140">
+                                <template slot-scope="scope">
+                                    <span v-if="scope.row.base_offset_x !== null">
+                                        X: {{ formatNumber(scope.row.base_offset_x, 4) }}°<br>
+                                        Y: {{ formatNumber(scope.row.base_offset_y, 4) }}°
+                                    </span>
+                                    <span v-else>-</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="测试相机" width="100">
+                                <template slot-scope="scope">
+                                    {{ scope.row.test_camera_name || scope.row.test_camera_id || '-' }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="测试偏移" width="140">
+                                <template slot-scope="scope">
+                                    <span v-if="scope.row.test_offset_x !== null">
+                                        X: {{ formatNumber(scope.row.test_offset_x, 4) }}°<br>
+                                        Y: {{ formatNumber(scope.row.test_offset_y, 4) }}°
+                                    </span>
+                                    <span v-else>-</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column prop="remark" label="备注" min-width="150">
+                                <template slot-scope="scope">
+                                    <span :title="scope.row.remark">{{ truncateText(scope.row.remark, 30) }}</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="操作" width="150" align="center">
+                                <template slot-scope="scope">
+                                    <el-button type="text" size="mini" @click="viewOpticalTest(scope.row)">详情</el-button>
+                                    <el-button type="text" size="mini" @click="exportOpticalTestPdf(scope.row.id)">PDF</el-button>
+                                    <el-button type="text" size="mini" style="color: var(--color-danger);" @click="deleteOpticalTest(scope.row.id)">删除</el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+
+                        <!-- 分页 -->
+                        <div class="pagination-wrap">
+                            <el-pagination
+                                @current-change="handleOpticalPageChange"
+                                :current-page="opticalPage"
+                                :page-size="opticalPageSize"
+                                :total="opticalTotal"
+                                layout="total, prev, pager, next"
+                                small
+                            ></el-pagination>
+                        </div>
+                    </div>
+                </div>
+            </el-tab-pane>
+        </el-tabs>
+
+        <!-- 光轴测试详情对话框 -->
+        <el-dialog title="光轴测试详情" :visible.sync="opticalDetailVisible" width="700px">
+            <div class="detail-grid" v-if="selectedOpticalTest">
+                <!-- 基准光轴 -->
+                <div class="detail-section">
+                    <div class="detail-section__title">基准光轴</div>
+                    <div class="detail-row">
+                        <span class="detail-label">相机:</span>
+                        <span class="detail-value">{{ selectedOpticalTest.base_camera_name || selectedOpticalTest.base_camera_id || '-' }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">图像尺寸:</span>
+                        <span class="detail-value">{{ selectedOpticalTest.base_width || '-' }} x {{ selectedOpticalTest.base_height || '-' }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">质心坐标:</span>
+                        <span class="detail-value">
+                            ({{ formatNumber(selectedOpticalTest.base_centroid_x, 2) }}, {{ formatNumber(selectedOpticalTest.base_centroid_y, 2) }})
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">焦距:</span>
+                        <span class="detail-value">{{ formatNumber(selectedOpticalTest.base_focal_length, 2) }} mm</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">像元大小:</span>
+                        <span class="detail-value">{{ formatNumber(selectedOpticalTest.base_pixel_size, 2) }} um</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">偏移X:</span>
+                        <span class="detail-value">{{ formatNumber(selectedOpticalTest.base_offset_x, 4) }}°</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">偏移Y:</span>
+                        <span class="detail-value">{{ formatNumber(selectedOpticalTest.base_offset_y, 4) }}°</span>
+                    </div>
+                    <img v-if="selectedOpticalTest.base_image_path" :src="'/' + selectedOpticalTest.base_image_path" class="detail-image" alt="基准光轴图像">
+                </div>
+
+                <!-- 测试光轴 -->
+                <div class="detail-section">
+                    <div class="detail-section__title">测试光轴</div>
+                    <div class="detail-row">
+                        <span class="detail-label">相机:</span>
+                        <span class="detail-value">{{ selectedOpticalTest.test_camera_name || selectedOpticalTest.test_camera_id || '-' }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">图像尺寸:</span>
+                        <span class="detail-value">{{ selectedOpticalTest.test_width || '-' }} x {{ selectedOpticalTest.test_height || '-' }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">质心坐标:</span>
+                        <span class="detail-value">
+                            ({{ formatNumber(selectedOpticalTest.test_centroid_x, 2) }}, {{ formatNumber(selectedOpticalTest.test_centroid_y, 2) }})
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">焦距:</span>
+                        <span class="detail-value">{{ formatNumber(selectedOpticalTest.test_focal_length, 2) }} mm</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">像元大小:</span>
+                        <span class="detail-value">{{ formatNumber(selectedOpticalTest.test_pixel_size, 2) }} um</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">偏移X:</span>
+                        <span class="detail-value">{{ formatNumber(selectedOpticalTest.test_offset_x, 4) }}°</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">偏移Y:</span>
+                        <span class="detail-value">{{ formatNumber(selectedOpticalTest.test_offset_y, 4) }}°</span>
+                    </div>
+                    <img v-if="selectedOpticalTest.test_image_path" :src="'/' + selectedOpticalTest.test_image_path" class="detail-image" alt="测试光轴图像">
+                </div>
+            </div>
+
+            <!-- 备注 -->
+            <div style="margin-top: 12px;" v-if="selectedOpticalTest && selectedOpticalTest.remark">
+                <strong>备注:</strong> {{ selectedOpticalTest.remark }}
+            </div>
+
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="opticalDetailVisible = false" size="small">关闭</el-button>
+                <el-button type="primary" @click="exportOpticalTestPdf(selectedOpticalTest.id)" size="small">导出PDF报告</el-button>
+            </span>
+        </el-dialog>
+    </div>
+</div>
+
+<script>
+new Vue({
+    el: '#app',
+    data: {
+        activeTab: 'serial',
+
+        // ============ 串口日志 ============
+        serialLogs: [],
+        serialTotal: 0,
+        serialPage: 1,
+        serialPageSize: 50,
+        serialLoading: false,
+        serialFilter: {
+            device: '',
+            port: ''
+        },
+        serialDevices: [],
+        serialPorts: [],
+
+        // ============ 光轴测试记录 ============
+        opticalTests: [],
+        opticalTotal: 0,
+        opticalPage: 1,
+        opticalPageSize: 20,
+        opticalLoading: false,
+        opticalDetailVisible: false,
+        selectedOpticalTest: null,
+    },
+
+    mounted() {
+        this.loadSerialLogs();
+    },
+
+    methods: {
+        // ============ Tab 切换 ============
+        onTabChange(tab) {
+            if (tab.name === 'serial') {
+                this.loadSerialLogs();
+            } else if (tab.name === 'optical') {
+                this.loadOpticalTests();
+            }
+        },
+
+        // ============ 串口日志方法 ============
+        async loadSerialLogs() {
+            this.serialLoading = true;
+            try {
+                const params = new URLSearchParams();
+                params.append('limit', this.serialPageSize);
+                params.append('offset', (this.serialPage - 1) * this.serialPageSize);
+                if (this.serialFilter.device) params.append('device', this.serialFilter.device);
+                if (this.serialFilter.port) params.append('port', this.serialFilter.port);
+
+                const res = await axios.get('/api/logs/serial?' + params.toString());
+                if (res.data.success) {
+                    this.serialLogs = res.data.logs;
+                    this.serialTotal = res.data.total;
+
+                    // 提取设备和串口列表用于筛选
+                    const devices = new Set();
+                    const ports = new Set();
+                    res.data.logs.forEach(log => {
+                        if (log.device) devices.add(log.device);
+                        if (log.port) ports.add(log.port);
+                    });
+                    this.serialDevices = Array.from(devices);
+                    this.serialPorts = Array.from(ports);
+                }
+            } catch (e) {
+                this.$message.error('加载串口日志失败: ' + e.message);
+            } finally {
+                this.serialLoading = false;
+            }
+        },
+
+        handleSerialPageChange(page) {
+            this.serialPage = page;
+            this.loadSerialLogs();
+        },
+
+        async deleteSerialLog(id) {
+            try {
+                await this.$confirm('确定删除此条日志?', '提示', { type: 'warning' });
+                const res = await axios.delete('/api/logs/serial/' + id);
+                if (res.data.success) {
+                    this.$message.success('删除成功');
+                    this.loadSerialLogs();
+                } else {
+                    this.$message.error(res.data.message);
+                }
+            } catch (e) {
+                if (e !== 'cancel') {
+                    this.$message.error('删除失败: ' + e.message);
+                }
+            }
+        },
+
+        async clearSerialLogs() {
+            try {
+                await this.$confirm('确定清空所有串口日志? 此操作不可恢复!', '警告', { type: 'warning' });
+                const res = await axios.post('/api/logs/serial/clear');
+                if (res.data.success) {
+                    this.$message.success(res.data.message);
+                    this.loadSerialLogs();
+                } else {
+                    this.$message.error(res.data.message);
+                }
+            } catch (e) {
+                if (e !== 'cancel') {
+                    this.$message.error('清空失败: ' + e.message);
+                }
+            }
+        },
+
+        exportSerialLogsExcel() {
+            window.open('/api/export/serial-logs/excel', '_blank');
+        },
+
+        // ============ 光轴测试记录方法 ============
+        async loadOpticalTests() {
+            this.opticalLoading = true;
+            try {
+                const params = new URLSearchParams();
+                params.append('limit', this.opticalPageSize);
+                params.append('offset', (this.opticalPage - 1) * this.opticalPageSize);
+
+                const res = await axios.get('/api/tests/optical-axis?' + params.toString());
+                if (res.data.success) {
+                    this.opticalTests = res.data.records;
+                    this.opticalTotal = res.data.total;
+                }
+            } catch (e) {
+                this.$message.error('加载光轴测试记录失败: ' + e.message);
+            } finally {
+                this.opticalLoading = false;
+            }
+        },
+
+        handleOpticalPageChange(page) {
+            this.opticalPage = page;
+            this.loadOpticalTests();
+        },
+
+        viewOpticalTest(test) {
+            this.selectedOpticalTest = test;
+            this.opticalDetailVisible = true;
+        },
+
+        async deleteOpticalTest(id) {
+            try {
+                await this.$confirm('确定删除此条测试记录? 关联的图片也将被删除!', '警告', { type: 'warning' });
+                const res = await axios.delete('/api/tests/optical-axis/' + id);
+                if (res.data.success) {
+                    this.$message.success('删除成功');
+                    this.loadOpticalTests();
+                } else {
+                    this.$message.error(res.data.message);
+                }
+            } catch (e) {
+                if (e !== 'cancel') {
+                    this.$message.error('删除失败: ' + e.message);
+                }
+            }
+        },
+
+        exportOpticalTestsExcel() {
+            window.open('/api/export/optical-tests/excel', '_blank');
+        },
+
+        exportOpticalTestPdf(id) {
+            window.open('/api/export/optical-test/' + id + '/pdf', '_blank');
+        },
+
+        // ============ 工具方法 ============
+        formatTime(timestamp) {
+            if (!timestamp) return '-';
+            // SQLite CURRENT_TIMESTAMP 存储的是UTC时间，需要转换为本地时间
+            // 时间格式: "2024-01-15 10:30:45" 或 "2024-01-15T10:30:45"
+            const utcTime = timestamp.replace(' ', 'T') + 'Z'; // 添加Z表示UTC
+            const date = new Date(utcTime);
+            if (isNaN(date.getTime())) {
+                // 解析失败，返回原始格式
+                return timestamp.replace('T', ' ').substring(0, 19);
+            }
+            // 格式化为本地时间 YYYY-MM-DD HH:mm:ss
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        },
+
+        formatNumber(value, decimals) {
+            if (value === null || value === undefined) return '-';
+            return Number(value).toFixed(decimals);
+        },
+
+        truncateText(text, maxLen) {
+            if (!text) return '-';
+            if (text.length <= maxLen) return text;
+            return text.substring(0, maxLen) + '...';
+        }
+    }
+});
+</script>
+</body>
+</html>

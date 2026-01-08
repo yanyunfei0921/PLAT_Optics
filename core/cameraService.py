@@ -11,30 +11,100 @@ from ctypes import *
 sys.path.append(os.getenv('MVCAM_COMMON_RUNENV') + "/Samples/python/MvImport")
 from MvCameraControl_class import *  # type: ignore
 
+
 class CameraService:
     """
     相机服务类 - 管理MvCamera SDK相机的连接、采集和图像处理
 
     支持GigE Vision工业相机，提供帧采集、质心计算和实时流推送功能。
+    支持通过设备索引或IP地址连接相机。
     """
 
-    def __init__(self, nConnectionNum: int):
+    def __init__(self, nConnectionNum: int, camera_ip: str = None):
         """
         初始化相机服务
 
         Args:
-            nConnectionNum: 相机设备索引号(从0开始)
+            nConnectionNum: 相机设备索引号(从0开始)，用于枚举方式连接
+            camera_ip: 相机IP地址(可选)，用于按IP查找设备
         """
         self.deviceList = None
         self.nConnectionNum = nConnectionNum
+        self.camera_ip = camera_ip  # 目标相机IP地址
         self.tlayerType = MV_GIGE_DEVICE
         self.cam = None
         self.stFloatValue = None
         self.running = False
         self.threshold = 128
+        self.median_kernel_size = 0  # 中值滤波核大小，0表示不滤波
         self.return_binary_image = False
         self.frame_queue = deque(maxlen=2)
         self.hThreadHandle = None
+
+    def setCameraIp(self, ip: str):
+        """设置相机IP地址"""
+        self.camera_ip = ip
+
+    def initCameraByIp(self, camera_ip: str = None) -> bool:
+        """
+        通过IP地址初始化相机 - 枚举设备并找到匹配IP的相机
+
+        Args:
+            camera_ip: 相机IP地址 (如 "192.168.1.10")
+
+        Returns:
+            bool: 初始化成功返回True，失败返回False
+        """
+        if camera_ip:
+            self.camera_ip = camera_ip
+
+        if not self.camera_ip:
+            print("Error: No camera IP specified")
+            return False
+
+        # 枚举所有设备
+        self.deviceList = MV_CC_DEVICE_INFO_LIST()
+        ret = MvCamera.MV_CC_EnumDevices(self.tlayerType, self.deviceList)
+        if ret != 0:
+            print(f"enum devices fail! ret[0x{ret:x}]")
+            return False
+
+        if self.deviceList.nDeviceNum == 0:
+            print("find no device!")
+            return False
+
+        print(f"Find {self.deviceList.nDeviceNum} devices!")
+
+        # 遍历设备，找到匹配IP的设备
+        target_ip_parts = self.camera_ip.split('.')
+        target_ip_int = (int(target_ip_parts[0]) << 24) | (int(target_ip_parts[1]) << 16) | \
+                        (int(target_ip_parts[2]) << 8) | int(target_ip_parts[3])
+
+        found_index = -1
+        for i in range(self.deviceList.nDeviceNum):
+            mvcc_dev_info = cast(self.deviceList.pDeviceInfo[i], POINTER(MV_CC_DEVICE_INFO)).contents
+            if mvcc_dev_info.nTLayerType == MV_GIGE_DEVICE:
+                device_ip = mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp
+                nip1 = (device_ip >> 24) & 0xFF
+                nip2 = (device_ip >> 16) & 0xFF
+                nip3 = (device_ip >> 8) & 0xFF
+                nip4 = device_ip & 0xFF
+                device_ip_str = f"{nip1}.{nip2}.{nip3}.{nip4}"
+
+                strModeName = ''.join([chr(c) for c in mvcc_dev_info.SpecialInfo.stGigEInfo.chModelName if c != 0])
+                print(f"  Device [{i}]: {strModeName}, IP: {device_ip_str}")
+
+                if device_ip == target_ip_int:
+                    found_index = i
+                    print(f"  -> Found target camera at index {i}!")
+
+        if found_index == -1:
+            print(f"Error: Camera with IP {self.camera_ip} not found in enumerated devices!")
+            return False
+
+        self.nConnectionNum = found_index
+        self.stFloatValue = MVCC_FLOATVALUE()
+        return True
 
     def initCamera(self) -> bool:
         """
@@ -88,45 +158,48 @@ class CameraService:
         """
         if self.cam is not None:
             self.closeAndDisconnectCamera()
+
+        if self.deviceList is None:
+            print("Error: deviceList is None, please call initCamera() or initCameraByIp() first")
+            return False
+
         self.cam = MvCamera()
         stDeviceList = cast(self.deviceList.pDeviceInfo[int(self.nConnectionNum)], POINTER(MV_CC_DEVICE_INFO)).contents
         ret = self.cam.MV_CC_CreateHandle(stDeviceList)
         if ret != 0:
-            print ("create handle fail! ret[0x%x]" % ret)
+            print(f"create handle fail! ret[0x{ret:x}]")
+            self.cam = None
             return False
-        
+
         ret = self.cam.MV_CC_OpenDevice(MV_ACCESS_Exclusive, 0)
         if ret != 0:
-            print ("open device fail! ret[0x%x]" % ret)
+            print(f"open device fail! ret[0x{ret:x}]")
+            self.cam.MV_CC_DestroyHandle()
+            self.cam = None
             return False
-        
+
         if stDeviceList.nTLayerType == MV_GIGE_DEVICE:
             nPacketSize = self.cam.MV_CC_GetOptimalPacketSize()
             if int(nPacketSize) > 0:
-                ret = self.cam.MV_CC_SetIntValue("GevSCPSPacketSize",nPacketSize)
+                ret = self.cam.MV_CC_SetIntValue("GevSCPSPacketSize", nPacketSize)
                 if ret != 0:
-                    print ("Warning: Set Packet Size fail! ret[0x%x]" % ret)
+                    print(f"Warning: Set Packet Size fail! ret[0x{ret:x}]")
             else:
-                print ("Warning: Get Packet Size fail! ret[0x%x]" % nPacketSize)
-        
+                print(f"Warning: Get Packet Size fail! ret[0x{nPacketSize:x}]")
+
         ret = self.cam.MV_CC_SetEnumValue("TriggerMode", MV_TRIGGER_MODE_OFF)
         if ret != 0:
-            print ("set trigger mode fail! ret[0x%x]" % ret)
-            return False
-        
-        ret = self.cam.MV_CC_SetEnumValue("ExposureAuto", 0)
-        if ret != 0:
-            print("set exposure auto off fail! ret[0x%x]" % ret)
+            print(f"set trigger mode fail! ret[0x{ret:x}]")
             return False
 
-        # ret = self.cam.MV_CC_SetGrabStrategy(LatestImagesOnly)
-        # if ret != 0:
-        #     print("set grab strategy fail! ret[0x%x]" % ret)
-        #     return False
+        ret = self.cam.MV_CC_SetEnumValue("ExposureAuto", 0)
+        if ret != 0:
+            print(f"set exposure auto off fail! ret[0x{ret:x}]")
+            return False
 
         ret = self.cam.MV_CC_StartGrabbing()
         if ret != 0:
-            print ("start grabbing fail! ret[0x%x]" % ret)
+            print(f"start grabbing fail! ret[0x{ret:x}]")
             return False
 
         try:
@@ -307,6 +380,21 @@ class CameraService:
     def getThreshold(self):
         return self.threshold
 
+    def setMedianKernelSize(self, size):
+        """设置中值滤波核大小，0表示不滤波，必须为奇数"""
+        size = int(size)
+        if size < 0:
+            size = 0
+        if size > 0 and size % 2 == 0:
+            size += 1  # 确保是奇数
+        if size > 31:
+            size = 31  # 限制最大值
+        self.median_kernel_size = size
+        return True
+
+    def getMedianKernelSize(self):
+        return self.median_kernel_size
+
     def centroidExtract(self, gray_image: np.ndarray, frame_num: int) -> dict:
         """
         提取图像质心并编码为JPEG
@@ -321,6 +409,10 @@ class CameraService:
         Returns:
             dict: 包含图像base64、尺寸、质心坐标等信息，失败返回None
         """
+        # 应用中值滤波（如果设置了）
+        if self.median_kernel_size > 0:
+            gray_image = cv2.medianBlur(gray_image, self.median_kernel_size)
+
         th = int(self.threshold)
         _, binary = cv2.threshold(gray_image, th, 255, cv2.THRESH_BINARY)
 
@@ -647,6 +739,7 @@ class VirtualCameraService:
         self.camera_id = camera_id
         self.running = False
         self.threshold = 128
+        self.median_kernel_size = 0  # 中值滤波核大小，0表示不滤波
         self.return_binary_image = False
         self.current_image = None
         self.frame_queue = deque(maxlen=2)
@@ -690,6 +783,10 @@ class VirtualCameraService:
         """
         提取图像质心并编码为JPEG (与CameraService保持一致)
         """
+        # 应用中值滤波（如果设置了）
+        if self.median_kernel_size > 0:
+            gray_image = cv2.medianBlur(gray_image, self.median_kernel_size)
+
         th = int(self.threshold)
         _, binary = cv2.threshold(gray_image, th, 255, cv2.THRESH_BINARY)
 
@@ -742,6 +839,28 @@ class VirtualCameraService:
     def getThreshold(self) -> int:
         """获取二值化阈值"""
         return self.threshold
+
+    def setMedianKernelSize(self, size: int) -> bool:
+        """设置中值滤波核大小，0表示不滤波，必须为奇数"""
+        size = int(size)
+        if size < 0:
+            size = 0
+        if size > 0 and size % 2 == 0:
+            size += 1  # 确保是奇数
+        if size > 31:
+            size = 31  # 限制最大值
+        self.median_kernel_size = size
+        # 如果有当前图像，重新处理
+        if self.current_image is not None:
+            self.frame_num += 1
+            frame_data = self.centroidExtract(self.current_image, self.frame_num)
+            if frame_data:
+                self.frame_queue.append(frame_data)
+        return True
+
+    def getMedianKernelSize(self) -> int:
+        """获取中值滤波核大小"""
+        return self.median_kernel_size
 
     def setReturnBinaryMode(self, is_binary: bool) -> bool:
         """设置是否返回二值化图像"""

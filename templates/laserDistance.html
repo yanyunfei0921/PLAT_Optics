@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- JS -->
+    <script type="text/javascript" src="/static/jsscripts/vue.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/axios.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/elementui/lib-master/index.js"></script>
+
+    <!-- Element UI -->
+    <link rel="stylesheet" href="/static/jsscripts/elementui/lib-master/theme-chalk/index.css">
+
+    <title>激光模拟测距</title>
+
+    <style>
+        /* ============ 全局基础样式 - 浅色极简工业风 ============ */
+        :root{
+            --color-bg: #f0f2f5;
+            --color-card: #ffffff;
+            --color-border: #d9d9d9;
+            --color-border-light: #e8e8e8;
+            --color-text-primary: #1f1f1f;
+            --color-text-secondary: #666666;
+            --color-text-placeholder: #999999;
+            --color-primary: #1890ff;
+            --color-success: #52c41a;
+            --color-warning: #faad14;
+            --color-danger: #f5222d;
+            --radius-sm: 2px;
+            --spacing-xs: 4px;
+            --spacing-sm: 6px;
+            --spacing-md: 8px;
+            --spacing-lg: 10px;
+        }
+        html{ height:calc(100%); }
+        body{
+            background: var(--color-bg);
+            margin:0;
+            height:100%;
+            overflow-y:auto;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--color-text-primary);
+            font-size: 13px;
+        }
+        .page{ padding:12px; max-width: 800px; margin: 0 auto; }
+
+        /* Panel 样式 */
+        .panel{
+            background: var(--color-card);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 12px;
+        }
+        .panel__hd{
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--color-border-light);
+            font-weight: 500;
+            font-size: 14px;
+        }
+        .panel__bd{
+            padding: 12px;
+        }
+
+        /* 表单样式 */
+        .form-row{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .form-row:last-child{ margin-bottom: 0; }
+        .form-label{
+            min-width: 100px;
+            color: var(--color-text-secondary);
+        }
+        .form-value{
+            flex: 1;
+        }
+
+        /* 结果展示 */
+        .result-grid{
+            display: grid;
+            grid-template-columns: 160px 1fr;
+            gap: 8px 12px;
+        }
+        .result-label{
+            color: var(--color-text-secondary);
+            text-align: right;
+        }
+        .result-value{
+            font-weight: 500;
+        }
+        .result-value strong{
+            color: var(--color-primary);
+        }
+        .result-value .note{
+            font-weight: normal;
+            font-size: 12px;
+            color: var(--color-warning);
+            margin-left: 6px;
+        }
+
+        /* 分隔线 */
+        .divider{
+            border-top: 1px solid var(--color-border-light);
+            margin: 12px 0;
+        }
+
+        /* 按钮组 */
+        .btn-group{
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 16px;
+        }
+
+        /* Element UI 覆盖 */
+        .el-button{ border-radius: var(--radius-sm); }
+        .el-button--primary{ background: var(--color-primary); border-color: var(--color-primary); }
+        .el-button--success{ background: var(--color-success); border-color: var(--color-success); }
+        .el-button--danger{ background: var(--color-danger); border-color: var(--color-danger); }
+        .el-button--info{ background: #8c8c8c; border-color: #8c8c8c; }
+        .el-input__inner{ border-radius: var(--radius-sm); }
+        .el-alert{ border-radius: var(--radius-sm); margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="page">
+        <!-- 输入区域 -->
+        <div class="panel">
+            <div class="panel__hd">距离输入 (300m - 30km)</div>
+            <div class="panel__bd">
+                <div class="form-row">
+                    <span class="form-label">模拟距离 (米):</span>
+                    <div class="form-value">
+                        <el-input
+                            v-model.number="distance"
+                            type="number"
+                            placeholder="输入距离 (300-30000)"
+                            :min="300"
+                            :max="30000"
+                            step="any"
+                            clearable
+                            style="width: 200px;"
+                            :disabled="isToggling"
+                        ></el-input>
+                    </div>
+                    <el-button
+                        type="primary"
+                        @click="calculateDelay"
+                        :disabled="isToggling || distance === null || distance < 0"
+                        size="small"
+                    >
+                        计算延时指令
+                    </el-button>
+                </div>
+
+                <!-- 错误提示 -->
+                <el-alert
+                    v-if="error"
+                    :title="error"
+                    type="error"
+                    show-icon
+                    :closable="false"
+                ></el-alert>
+            </div>
+        </div>
+
+        <!-- 结果区域 -->
+        <div class="panel" v-if="equivalentTimeUs !== null && !error">
+            <div class="panel__hd">延时计算与指令分解</div>
+            <div class="panel__bd">
+                <div class="result-grid">
+                    <span class="result-label">光速 (c):</span>
+                    <span class="result-value">{{ speedOfLight.toLocaleString() }} m/s</span>
+
+                    <span class="result-label">等效往返时间 (理论):</span>
+                    <span class="result-value">{{ equivalentTimeUs.toFixed(3) }} us</span>
+
+                    <span class="result-label">目标总延时 (四舍五入):</span>
+                    <span class="result-value">{{ roundedTotalMicroseconds.toFixed(3) }} us</span>
+
+                    <span class="result-label">指令: set_delay_time:</span>
+                    <span class="result-value">
+                        <template v-if="baseDelayTimeUs > 0">
+                            发送参数: <strong>{{ baseDelayTimeUs }} us</strong>
+                        </template>
+                        <template v-else>
+                            不发送 (总延时过短或由4ns指令处理)
+                        </template>
+                    </span>
+
+                    <span class="result-label">指令: delay_time_add_4ns:</span>
+                    <span class="result-value">
+                        发送次数: <strong>{{ count4nsAdds }} 次</strong>
+                        (补偿 {{ count4nsAdds * 4 }} ns)
+                    </span>
+
+                    <span class="result-label">预计应用的总延时:</span>
+                    <span class="result-value">
+                        {{ appliedTotalDelayUs.toFixed(3) }} us
+                        <span v-if="Math.abs(appliedTotalDelayUs - roundedTotalMicroseconds) > 0.0005" class="note">
+                            (与目标有微小偏差)
+                        </span>
+                    </span>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- 控制按钮 -->
+                <div class="btn-group">
+                    <el-button
+                        :type="simulationButtonType"
+                        :icon="simulationButtonIcon"
+                        @click="handleSimulationToggle"
+                        :disabled="!canToggleSimulationButton"
+                        :loading="isToggling"
+                    >
+                        {{ simulationButtonText }}
+                    </el-button>
+                    <el-button
+                        type="info"
+                        icon="el-icon-s-promotion"
+                        @click="executeTempTest"
+                        :disabled="isToggling || isTesting"
+                        :loading="isTesting"
+                    >
+                        临时测试
+                    </el-button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 操作日志 -->
+        <div class="panel">
+            <div class="panel__hd">操作日志</div>
+            <div class="panel__bd" style="max-height: 200px; overflow-y: auto;">
+                <div v-for="(log, idx) in logs" :key="idx" style="margin-bottom: 4px; font-size: 12px;">
+                    <span style="color: #999;">[{{ log.time }}]</span>
+                    <span :style="{color: log.type === 'error' ? '#f5222d' : log.type === 'success' ? '#52c41a' : '#1f1f1f'}">
+                        {{ log.message }}
+                    </span>
+                </div>
+                <div v-if="logs.length === 0" style="color: #999; text-align: center;">暂无日志</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const MIN_SET_DELAY_US = 1;
+const MAX_SET_DELAY_US = 200;
+
+new Vue({
+    el: '#app',
+    data: {
+        distance: null,
+        speedOfLight: 299792458,
+        equivalentTimeUs: null,
+        roundedTotalMicroseconds: 0,
+        baseDelayTimeUs: 0,
+        count4nsAdds: 0,
+        error: '',
+        isSimulating: false,
+        isToggling: false,
+        isModuleOpen: false,
+        isTesting: false,
+        logs: []
+    },
+    computed: {
+        canToggleSimulationButton(){
+            return this.equivalentTimeUs !== null && !this.isToggling && !this.error && !this.isTesting;
+        },
+        simulationButtonText(){
+            return this.isSimulating ? '停止模拟 (关闭模块)' : '开始模拟';
+        },
+        simulationButtonType(){
+            return this.isSimulating ? 'danger' : 'success';
+        },
+        simulationButtonIcon(){
+            return this.isSimulating ? 'el-icon-video-pause' : 'el-icon-video-play';
+        },
+        appliedTotalDelayUs(){
+            const delayFromSetTime = this.baseDelayTimeUs > 0 ? this.baseDelayTimeUs : 0;
+            const delayFrom4nsAdds = (this.count4nsAdds * 4) / 1000;
+            return delayFromSetTime + delayFrom4nsAdds;
+        }
+    },
+    methods: {
+        addLog(message, type = 'info'){
+            const now = new Date();
+            const time = now.toLocaleTimeString('zh-CN', {hour12: false});
+            this.logs.unshift({ time, message, type });
+            if(this.logs.length > 100) this.logs.pop();
+        },
+        resetCalculation(){
+            this.error = '';
+            this.equivalentTimeUs = null;
+            this.roundedTotalMicroseconds = 0;
+            this.baseDelayTimeUs = 0;
+            this.count4nsAdds = 0;
+        },
+        calculateDelay(event){
+            if(event) event.preventDefault();
+            this.resetCalculation();
+
+            if(this.distance === null || typeof this.distance !== 'number' || this.distance < 0){
+                this.error = '请输入一个有效的非负距离值。';
+                return;
+            }
+
+            const timeSeconds = (2 * this.distance) / this.speedOfLight;
+            const totalMicrosecondsExact = timeSeconds * 1000000;
+            this.equivalentTimeUs = totalMicrosecondsExact;
+
+            let totalNanosecondsExact = totalMicrosecondsExact * 1000;
+            let roundedTotalNanoseconds = Math.round(totalNanosecondsExact / 4) * 4;
+
+            this.roundedTotalMicroseconds = roundedTotalNanoseconds / 1000;
+
+            if(roundedTotalNanoseconds <= 0){
+                this.baseDelayTimeUs = 0;
+                this.count4nsAdds = 0;
+                if(this.distance > 0){
+                    this.$message.warning('延时模块：依据所输入距离，计算的延时时长结果向下取整后为0ns，无法执行。');
+                }
+                return;
+            }
+
+            let remainingNsToApply = roundedTotalNanoseconds;
+
+            if(remainingNsToApply >= MIN_SET_DELAY_US * 1000){
+                let baseUs = Math.floor(remainingNsToApply / 1000);
+                if(baseUs < MIN_SET_DELAY_US) baseUs = MIN_SET_DELAY_US;
+                if(baseUs > MAX_SET_DELAY_US) baseUs = MAX_SET_DELAY_US;
+
+                this.baseDelayTimeUs = baseUs;
+                remainingNsToApply -= baseUs * 1000;
+            } else {
+                this.$message.warning('延时模块：依据所输入距离，计算的延时时长结果小于1us，无法执行。');
+                return;
+            }
+
+            if(remainingNsToApply > 0){
+                this.count4nsAdds = Math.round(remainingNsToApply / 4);
+            } else {
+                this.count4nsAdds = 0;
+            }
+
+            this.addLog(`计算完成: 距离=${this.distance}m, 延时=${this.roundedTotalMicroseconds.toFixed(3)}us`);
+        },
+
+        async sendCommand(device, cmd, params = {}, wait_response = false){
+            try {
+                const res = await axios.post('/api/command/send', {
+                    device: device,
+                    cmd: cmd,
+                    params: params,
+                    wait_response: wait_response,
+                    timeout: 1.0
+                });
+                return res.data;
+            } catch(err){
+                return { success: false, message: err.message };
+            }
+        },
+
+        async handleSimulationToggle(){
+            if(this.isToggling) return;
+
+            this.isToggling = true;
+            this.$message.closeAll();
+
+            if(this.isSimulating){
+                await this.executeCloseSequence();
+            } else {
+                await this.startSimulationSequence();
+            }
+        },
+
+        async startSimulationSequence(){
+            this.isToggling = true;
+            let moduleSuccessfullyOpened = false;
+
+            try {
+                // 1. Center 1064nm Laser
+                this.addLog('步骤1/3: 正在将 1064nm 激光器移动到中心...');
+                this.$message.info('步骤1/3: 正在将 1064nm 激光器移动到中心...');
+                const centerRes = await this.sendCommand('three_axis_motor', 'centering_1064nm_laser', {}, false);
+                if(centerRes.success){
+                    this.$message.success('1064nm激光器已到位');
+                    this.addLog('1064nm激光器已到位', 'success');
+                    await this.sleep(100);
+                } else {
+                    throw new Error(`1064nm激光器到位失败: ${centerRes.message || '未知错误'}`);
+                }
+
+                // 2. Open Delay Module
+                this.addLog('步骤2/3: 正在打开延时模块...');
+                this.$message.info('步骤2/3: 正在打开延时模块...');
+                const openRes = await this.sendCommand('delay_module', 'open', {}, true);
+                if(openRes.success){
+                    this.$message.success('延时模块打开成功');
+                    this.addLog('延时模块打开成功', 'success');
+                    this.isModuleOpen = true;
+                    moduleSuccessfullyOpened = true;
+                } else {
+                    throw new Error(`延时模块打开失败: ${openRes.message || '未知错误'}`);
+                }
+
+                // 3. Send Delay Commands
+                this.addLog('步骤3/3: 正在发送延时设置指令...');
+                this.$message.info('步骤3/3: 正在发送延时设置指令...');
+                let commandsSentInfo = [];
+
+                if(this.baseDelayTimeUs > 0){
+                    // 后端动态指令会自动计算校验和
+                    const setTimeRes = await this.sendCommand('delay_module', 'set_delay_time', { delay_time_us: this.baseDelayTimeUs }, true);
+                    if(setTimeRes.success){
+                        this.$message.success(`设定基础延时时长 ${this.baseDelayTimeUs} us成功`);
+                        this.addLog(`设定基础延时时长 ${this.baseDelayTimeUs} us成功`, 'success');
+                        commandsSentInfo.push(`set_delay_time (${this.baseDelayTimeUs} us)`);
+                    } else {
+                        throw new Error(`设定基础延时时长失败: ${setTimeRes.message || '未知错误'}`);
+                    }
+                }
+
+                if(this.count4nsAdds > 0){
+                    for(let i = 0; i < this.count4nsAdds; i++){
+                        const add4nsRes = await this.sendCommand('delay_module', 'delay_time_add_4ns', {}, true);
+                        if(!add4nsRes.success){
+                            throw new Error(`第${i+1}次增加4ns微调延时时长失败: ${add4nsRes.message || '未知错误'}`);
+                        }
+                    }
+                    this.$message.success(`增加${this.count4nsAdds}次4ns微调延时时长成功`);
+                    this.addLog(`增加${this.count4nsAdds}次4ns微调延时时长成功`, 'success');
+                    commandsSentInfo.push(`${this.count4nsAdds} 次 delay_time_add_4ns`);
+                }
+
+                if(commandsSentInfo.length > 0){
+                    this.$message.success(`延时指令发送完成: ${commandsSentInfo.join('、')}。回波模拟已启动。`);
+                    this.addLog(`回波模拟已启动`, 'success');
+                } else {
+                    this.$message.warning('检查所设定的模拟距离是否在可工作范围内');
+                }
+                this.isSimulating = true;
+
+            } catch(error) {
+                console.error('开始模拟序列时发生错误:', error);
+                this.$message.error(error.message || error);
+                this.addLog(error.message || error, 'error');
+
+                if(moduleSuccessfullyOpened){
+                    this.addLog('由于发生错误，尝试关闭已打开的延时模块...');
+                    await this.executeCloseSequence(true);
+                }
+                this.isSimulating = false;
+            } finally {
+                this.isToggling = false;
+            }
+        },
+
+        async executeCloseSequence(isErrorCleanup = false){
+            if(!isErrorCleanup){
+                this.addLog('正在关闭延时模块...');
+                this.$message.info('正在关闭延时模块...');
+            }
+
+            let successfullyClosed = false;
+            if(this.isModuleOpen){
+                try {
+                    const closeRes = await this.sendCommand('delay_module', 'close', {}, true);
+                    if(!closeRes.success){
+                        this.$message.error(`关闭延时模块失败: ${closeRes.message || '指令失败'}`);
+                        this.addLog(`关闭延时模块失败: ${closeRes.message || '指令失败'}`, 'error');
+                    } else {
+                        if(!isErrorCleanup){
+                            this.$message.success('延时模块已关闭。');
+                            this.addLog('延时模块已关闭', 'success');
+                        } else {
+                            this.$message.warning('已尝试关闭延时模块（错误恢复）。');
+                            this.addLog('已尝试关闭延时模块（错误恢复）', 'success');
+                        }
+                        successfullyClosed = true;
+                    }
+                } catch(closeError) {
+                    console.error('关闭延时模块时发生错误:', closeError);
+                    this.$message.error(`关闭延时模块出错: ${closeError.message}`);
+                    this.addLog(`关闭延时模块出错: ${closeError.message}`, 'error');
+                }
+            } else {
+                if(!isErrorCleanup){
+                    this.$message.info('延时模块未打开或已关闭。');
+                    this.addLog('延时模块未打开或已关闭');
+                }
+                successfullyClosed = true;
+            }
+
+            this.isModuleOpen = false;
+            this.isSimulating = false;
+            if(!isErrorCleanup) this.isToggling = false;
+            return successfullyClosed;
+        },
+
+        async executeTempTest(){
+            if(this.isToggling){
+                this.$message.warning('主模拟操作正在进行中，请稍后重试测试功能。');
+                return;
+            }
+            this.isTesting = true;
+            this.$message.closeAll();
+            this.addLog('开始执行临时测试序列...');
+            this.$message.info('开始执行临时测试序列...');
+
+            try {
+                // 1. Open Delay Module
+                this.addLog('测试步骤1/3: 正在打开延时模块...');
+                this.$message.info('测试步骤1/3: 正在打开延时模块...');
+                const openRes = await this.sendCommand('delay_module', 'open', {}, true);
+                if(!openRes.success){
+                    throw new Error(openRes.message || '打开延时模块指令失败 (测试)');
+                }
+                this.addLog('测试步骤1/3: 延时模块已打开', 'success');
+                this.$message.success('测试步骤1/3: 延时模块已打开。');
+
+                // 2. Set Delay Time to 1us
+                this.addLog('测试步骤2/3: 正在设置延时为 1us...');
+                this.$message.info('测试步骤2/3: 正在设置延时为 1us...');
+                // 后端动态指令会自动计算校验和
+                const setTimeRes = await this.sendCommand('delay_module', 'set_delay_time', { delay_time_us: 1 }, true);
+                if(!setTimeRes.success){
+                    throw new Error(setTimeRes.message || 'set_delay_time (1 us) 指令失败 (测试)');
+                }
+                this.addLog('测试步骤2/3: 延时已设置为 1us', 'success');
+                this.$message.success('测试步骤2/3: 延时已设置为 1us。');
+
+                // 3. Loop 200 times: send delay_time_add_4ns, wait 10ms
+                const totalAdds = 200;
+                this.addLog(`测试步骤3/3: 将循环发送${totalAdds}次 delay_time_add_4ns (每次增加4ns, 间隔10ms)...`);
+                this.$message.info(`测试步骤3/3: 将循环发送${totalAdds}次 delay_time_add_4ns...`);
+
+                for(let i = 0; i < totalAdds; i++){
+                    const addRes = await this.sendCommand('delay_module', 'delay_time_add_4ns', {}, true);
+                    if(!addRes.success){
+                        throw new Error(addRes.message || `第 ${i + 1} 次 delay_time_add_4ns 指令失败 (测试)`);
+                    }
+                    if((i + 1) % 20 === 0 || i === totalAdds - 1){
+                        this.addLog(`测试步骤3/3: 已发送 ${i + 1}/${totalAdds} 次 delay_time_add_4ns...`);
+                    }
+                    await this.sleep(10);
+                }
+
+                this.$message.success(`测试步骤3/3: 完成${totalAdds}次 delay_time_add_4ns (总计增加 ${totalAdds * 4}ns)。`);
+                this.addLog(`完成${totalAdds}次 delay_time_add_4ns (总计增加 ${totalAdds * 4}ns)`, 'success');
+                this.$message.success('临时测试序列执行完毕！');
+                this.addLog('临时测试序列执行完毕！', 'success');
+
+            } catch(error) {
+                console.error('临时测试序列发生错误:', error);
+                this.$message.error(`测试失败: ${error.message}`);
+                this.addLog(`测试失败: ${error.message}`, 'error');
+            } finally {
+                this.isTesting = false;
+            }
+        },
+
+        sleep(ms){
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+    }
+});
+</script>
+</body>
+</html>

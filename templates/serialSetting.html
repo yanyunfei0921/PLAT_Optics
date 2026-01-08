@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- JS 引入（与 index/login 保持一致） -->
+    <!-- JS 引入 -->
     <script type="text/javascript" src="/static/jsscripts/vue.js"></script>
     <script type="text/javascript" src="/static/jsscripts/axios.js"></script>
     <script type="text/javascript" src="/static/jsscripts/elementui/lib-master/index.js"></script>
@@ -14,99 +14,203 @@
     <link rel="stylesheet" href="/static/jsscripts/elementui/lib-master/theme-chalk/index.css">
 
     <style>
-        html{ height:calc(100%); }
-        body{ background:#f5f7fa; }
-        .page{ padding:16px; }
-        .toolbar{ display:flex; gap:8px; align-items:center; }
-        .tag-bar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-        .card{ margin-bottom:12px; }
-        .device-title{ font-weight:600; }
-        .row-meta{ color:#606266; font-size:13px; }
-        .row-meta span{ margin-right:16px; }
-        .op-buttons{ display:flex; gap:8px; align-items:center; }
-        .meta-block{ display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
+        /* ============ 全局基础样式 - 浅色极简工业风 ============ */
+        :root{
+            --color-bg: #f0f2f5;
+            --color-card: #ffffff;
+            --color-border: #d9d9d9;
+            --color-border-light: #e8e8e8;
+            --color-text-primary: #1f1f1f;
+            --color-text-secondary: #666666;
+            --color-text-placeholder: #999999;
+            --color-primary: #1890ff;
+            --color-success: #52c41a;
+            --color-warning: #faad14;
+            --color-danger: #f5222d;
+            --radius-sm: 2px;
+            --spacing-xs: 4px;
+            --spacing-sm: 6px;
+            --spacing-md: 8px;
+            --spacing-lg: 10px;
+        }
+        html{ height:100%; }
+        body{
+            background: var(--color-bg);
+            margin: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--color-text-primary);
+            font-size: 13px;
+        }
+        .page{ padding: 12px; }
+
+        /* Panel 样式 */
+        .panel{
+            background: var(--color-card);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 10px;
+        }
+        .panel__hd{
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--color-border-light);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .panel__bd{
+            padding: 12px;
+        }
+        .panel__title{
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        /* 工具栏 */
+        .toolbar{ display: flex; gap: 6px; align-items: center; }
+        .tag-bar{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+        /* 设备信息 */
+        .device-row{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .device-info{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .device-name{
+            font-weight: 500;
+            font-size: 13px;
+        }
+        .device-port{
+            color: var(--color-text-secondary);
+            font-size: 12px;
+        }
+        .meta-block{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            color: var(--color-text-secondary);
+            font-size: 12px;
+        }
+        .meta-block b{
+            color: var(--color-text-primary);
+            font-weight: 500;
+        }
+
+        /* ============ Element UI 组件覆盖 ============ */
+        .el-button{ border-radius: var(--radius-sm); }
+        .el-button--mini{ padding: 5px 10px; font-size: 12px; }
+        .el-button--primary{ background: var(--color-primary); border-color: var(--color-primary); }
+        .el-button--success{ background: var(--color-success); border-color: var(--color-success); }
+        .el-button--danger{ background: var(--color-danger); border-color: var(--color-danger); }
+        .el-button--warning{ background: var(--color-warning); border-color: var(--color-warning); }
+        .el-tag{ border-radius: var(--radius-sm); }
+        .el-tag--success{ background: #f6ffed; border-color: #b7eb8f; color: #52c41a; }
+        .el-tag--info{ background: #fafafa; border-color: #d9d9d9; color: #8c8c8c; }
+        .el-dialog{ border-radius: var(--radius-sm); }
+        .el-dialog__header{ padding: 12px 16px; border-bottom: 1px solid var(--color-border-light); }
+        .el-dialog__body{ padding: 16px; }
+        .el-dialog__footer{ padding: 12px 16px; border-top: 1px solid var(--color-border-light); }
+        .el-input__inner{ border-radius: var(--radius-sm); }
+        .el-select .el-input__inner{ border-radius: var(--radius-sm); }
+        .el-form-item{ margin-bottom: 16px; }
+        .el-form-item__label{ color: var(--color-text-secondary); font-size: 13px; }
+        .el-link{ font-size: 12px; }
+        .el-dropdown-link{ font-size: 12px; color: var(--color-text-secondary); }
     </style>
 
     <title>串口设置</title>
 </head>
 <body>
     <div id="app" class="page">
-        <el-card class="card" shadow="never">
-            <div slot="header" class="clearfix">
-                <span class="device-title">串口连接控制</span>
-                <div style="float:right" class="toolbar">
+        <!-- 控制面板 -->
+        <div class="panel">
+            <div class="panel__hd">
+                <span class="panel__title">串口连接控制</span>
+                <div class="toolbar">
                     <el-button type="primary" size="mini" icon="el-icon-link" @click="connectAll">连接所有</el-button>
                     <el-button size="mini" icon="el-icon-refresh-left" @click="disconnectAll">断开所有</el-button>
                     <el-button type="warning" size="mini" icon="el-icon-document" @click="saveAll">保存配置</el-button>
                 </div>
             </div>
-            <div class="tag-bar">
-                <span style="color:#909399">串口连接概览：</span>
-                <el-tag v-for="d in devices" :key="d.key" :type="d.connected? 'success':'info'" effect="plain">{{ d.cnName }}</el-tag>
+            <div class="panel__bd">
+                <div class="tag-bar">
+                    <span style="color: var(--color-text-placeholder); font-size: 12px;">串口连接概览：</span>
+                    <el-tag v-for="d in devices" :key="d.key" :type="d.connected ? 'success' : 'info'" effect="plain" size="small">{{ d.cnName }}</el-tag>
+                </div>
             </div>
-        </el-card>
+        </div>
 
         <!-- 动态设备列表 -->
-        <el-card v-for="device in devices" :key="device.key" class="card" shadow="never">
-            <div slot="header" class="clearfix">
-                <span class="device-title">设备：{{ device.cnName }} <span class="row-meta">（{{ getPortLabel(device.key) }}）</span></span>
-                <div style="float:right" class="op-buttons">
+        <div class="panel" v-for="device in devices" :key="device.key">
+            <div class="panel__hd">
+                <div class="device-info">
+                    <span class="device-name">{{ device.cnName }}</span>
+                    <span class="device-port">{{ getPortLabel(device.key) }}</span>
+                </div>
+                <div class="toolbar">
                     <el-link type="primary" :underline="false" icon="el-icon-edit" @click="editDevice(device.key)">编辑</el-link>
                     <el-dropdown @command="onCommandSelect">
-                        <span class="el-dropdown-link" style="cursor:pointer;color:#909399">
+                        <span class="el-dropdown-link" style="cursor:pointer">
                             测试指令<i class="el-icon-arrow-down el-icon--right"></i>
                         </span>
                         <el-dropdown-menu slot="dropdown">
-                            <el-dropdown-item 
-                                v-for="cmd in getDeviceCommandList(device.key)" 
-                                :key="cmd.key" 
+                            <el-dropdown-item
+                                v-for="cmd in getDeviceCommandList(device.key)"
+                                :key="cmd.key"
                                 :command="{ device: device.key, cmd: cmd.key }">
                                 {{ cmd.label }}
                             </el-dropdown-item>
                             <el-dropdown-item v-if="getDeviceCommandList(device.key).length===0" disabled>无可用指令</el-dropdown-item>
                         </el-dropdown-menu>
                     </el-dropdown>
-                    <el-button size="mini" :type="isConnected(device.key)? 'danger':'success'" @click="toggleConnect(device.key)">
-                        {{ isConnected(device.key)? '断开':'连接' }}
+                    <el-button size="mini" :type="isConnected(device.key) ? 'danger' : 'success'" @click="toggleConnect(device.key)">
+                        {{ isConnected(device.key) ? '断开' : '连接' }}
                     </el-button>
                 </div>
             </div>
-            <div class="meta-block">
-                <span>波特率: <b>{{ cfg(device.key).baudrate }}</b></span>
-                <span>数据位: <b>{{ cfg(device.key).dataBits }}</b></span>
-                <span>停止位: <b>{{ cfg(device.key).stopBits }}</b></span>
-                <span>校验位: <b>{{ cfg(device.key).parity }}</b></span>
-                <span>超时(ms): <b>{{ cfg(device.key).timeout }}</b></span>
+            <div class="panel__bd">
+                <div class="meta-block">
+                    <span>波特率: <b>{{ cfg(device.key).baudrate }}</b></span>
+                    <span>数据位: <b>{{ cfg(device.key).dataBits }}</b></span>
+                    <span>停止位: <b>{{ cfg(device.key).stopBits }}</b></span>
+                    <span>校验位: <b>{{ cfg(device.key).parity }}</b></span>
+                    <span>超时(ms): <b>{{ cfg(device.key).timeout }}</b></span>
+                </div>
             </div>
-        </el-card>
+        </div>
 
         <!-- 指令参数弹窗 -->
-        <el-dialog 
-            title="填写指令参数" 
-            :visible.sync="paramDialogVisible" 
-            width="500px"
+        <el-dialog
+            title="填写指令参数"
+            :visible.sync="paramDialogVisible"
+            width="480px"
             :close-on-click-modal="false">
             <div v-if="currentCommandMeta">
-                <div style="margin-bottom:8px;color:#909399">{{ currentCommandMeta.description || ('指令：' + currentCommandMeta.key) }}</div>
-                <el-form :model="paramForm" label-width="120px">
+                <div style="margin-bottom: 12px; color: var(--color-text-secondary); font-size: 12px;">{{ currentCommandMeta.description || ('指令：' + currentCommandMeta.key) }}</div>
+                <el-form :model="paramForm" label-width="100px" size="small">
                     <el-form-item v-for="p in (currentCommandMeta.params||[])" :key="p" :label="p">
                         <el-input v-model="paramForm[p]" autocomplete="off"></el-input>
                     </el-form-item>
                 </el-form>
             </div>
-            <div slot="footer" class="dialog-footer">
-                <el-button @click="paramDialogVisible=false">取消</el-button>
-                <el-button type="primary" :loading="sending" @click="executeCurrentCommand">执行</el-button>
+            <div slot="footer">
+                <el-button size="small" @click="paramDialogVisible=false">取消</el-button>
+                <el-button type="primary" size="small" :loading="sending" @click="executeCurrentCommand">执行</el-button>
             </div>
         </el-dialog>
 
         <!-- 编辑配置弹窗 -->
-        <el-dialog 
-            title="编辑串口配置" 
-            :visible.sync="editDialogVisible" 
-            width="600px"
+        <el-dialog
+            title="编辑串口配置"
+            :visible.sync="editDialogVisible"
+            width="520px"
             :close-on-click-modal="false">
-            <el-form :model="editForm" label-width="120px" ref="editForm">
+            <el-form :model="editForm" label-width="100px" ref="editForm" size="small">
                 <el-form-item label="设备名称">
                     <el-input v-model="editForm.cnName" disabled></el-input>
                 </el-form-item>
@@ -151,9 +255,9 @@
                     <el-input-number v-model="editForm.timeout" :min="100" :max="10000" :step="100" style="width:100%"></el-input-number>
                 </el-form-item>
             </el-form>
-            <div slot="footer" class="dialog-footer">
-                <el-button @click="editDialogVisible = false">取消</el-button>
-                <el-button type="primary" @click="saveEditForm">保存</el-button>
+            <div slot="footer">
+                <el-button size="small" @click="editDialogVisible = false">取消</el-button>
+                <el-button type="primary" size="small" @click="saveEditForm">保存</el-button>
             </div>
         </el-dialog>
     </div>
@@ -167,8 +271,8 @@
                 // 串口参数（从后端加载）
                 configs: {},
                 // 指令配置（从静态配置加载）
-                commandsMap: {}, // { deviceKey: { cmdKey: templateStr } }
-                parsedCommands: {}, // { deviceKey: [ { key,label,template,params:[] } ] }
+                commandsMap: {},
+                parsedCommands: {},
                 // 编辑弹窗相关
                 editDialogVisible: false,
                 editForm: {
@@ -195,7 +299,6 @@
                 this.loadCommands();
             },
             methods: {
-                // 加载配置
                 loadConfig() {
                     axios.get('/api/serial-config')
                         .then(response => {
@@ -203,7 +306,6 @@
                                 const data = response.data.data;
                                 this.devices = data.devices || [];
                                 this.configs = data.configs || {};
-                                // 加载完配置后刷新一次连接状态
                                 this.refreshStatus();
                             } else {
                                 this.$message.error('加载配置失败: ' + response.data.message);
@@ -214,7 +316,6 @@
                             this.$message.error('加载配置失败');
                         });
                 },
-                // 刷新连接状态
                 refreshStatus(){
                     const keys = (this.devices || []).map(d => d.key);
                     if(!keys.length){ return; }
@@ -233,7 +334,6 @@
                             console.warn('刷新状态失败', err);
                         })
                 },
-                // 保存配置
                 saveConfig() {
                     const data = {
                         devices: this.devices,
@@ -252,14 +352,12 @@
                             this.$message.error('保存配置失败');
                         });
                 },
-                // 工具方法
                 cfg(key){ return this.configs[key] || {}; },
                 findDevice(key){ return this.devices.find(d => d.key===key) || {}; },
                 isConnected(key){ const d=this.findDevice(key); return !!d.connected; },
-                getPortLabel(key){ const d=this.findDevice(key); return d.port? d.port: '未配置'; },
-                // 指令相关
+                getPortLabel(key){ const d=this.findDevice(key); return d.port ? d.port : '未配置'; },
                 loadCommands(){
-                    axios.get('/static/configs/commandConfig.json')
+                    axios.get('/api/command/config')
                         .then(res => {
                             if(res && res.data){
                                 this.commandsMap = res.data || {};
@@ -283,10 +381,8 @@
                 },
                 extractParamsFromTemplate(template){
                     if(typeof template !== 'string'){ return []; }
-                    // 去掉前缀 f/h
                     let body = template;
                     if(body.startsWith('f') || body.startsWith('h')){ body = body.slice(1); }
-                    // 匹配花括号中的参数名：{name} 或 {name:fmt}
                     const re = /\{\s*([a-zA-Z_][a-zA-Z0-9_]*)[^}]*\}/g;
                     const set = new Set();
                     let m;
@@ -306,13 +402,11 @@
                     this.currentCommandKey = cmd;
                     this.currentCommandMeta = meta;
                     if(meta.params && meta.params.length){
-                        // 打开参数弹窗
                         const init = {};
                         meta.params.forEach(p => { init[p] = ''; });
                         this.paramForm = init;
                         this.paramDialogVisible = true;
                     }else{
-                        // 直接执行
                         this.doSendCommand(device, cmd, {});
                     }
                 },
@@ -321,7 +415,6 @@
                     this.doSendCommand(this.currentDeviceKey, this.currentCommandKey, this.paramForm || {});
                 },
                 doSendCommand(device, cmd, params){
-                    // 在前端将数字字符串转成数字类型
                     const coerceNumber = (v) => {
                         if (typeof v !== 'string') return v;
                         const s = v.trim();
@@ -357,9 +450,7 @@
                     })
                 },
 
-                // 关键按钮
                 connectAll(){
-                    console.log('connectAll');
                     const payload = (this.devices||[]).map(d => ({
                         key: d.key,
                         port: d.port,
@@ -388,7 +479,6 @@
                         })
                 },
                 disconnectAll(){
-                    console.log('disconnectAll');
                     axios.post('/api/serial/disconnect-all', {})
                         .then(res => {
                             if(res.data && res.data.success){
@@ -422,12 +512,10 @@
                     this.editDialogVisible = true;
                 },
                 saveEditForm() {
-                    // 更新设备信息
                     const device = this.findDevice(this.editForm.key);
                     if (device) {
                         device.port = this.editForm.port;
                     }
-                    // 更新配置信息
                     this.configs[this.editForm.key] = {
                         baudrate: this.editForm.baudrate,
                         dataBits: this.editForm.dataBits,
@@ -435,20 +523,13 @@
                         parity: this.editForm.parity,
                         timeout: this.editForm.timeout
                     };
-                    // 关闭弹窗并保存
                     this.editDialogVisible = false;
                     this.saveConfig();
                 },
-                testDevice(key){
-                    console.log('testDevice', key);
-                    // TODO: 下发测试命令，读取返回
-                },
                 toggleConnect(key){
-                    console.log('toggleConnect', key);
                     const d = this.findDevice(key);
                     if(!d){ return; }
                     if(this.isConnected(key)){
-                        // 断开
                         axios.post('/api/serial/disconnect', { deviceKey: key })
                             .then(res => {
                                 if(res.data && res.data.success){
@@ -463,8 +544,6 @@
                                 this.$message.error('断开异常');
                             })
                     }else{
-                        // 连接
-                        // 检查必要参数
                         const cfg = this.cfg(key) || {};
                         if(!d.port){
                             this.$message.warning('请先为设备配置串口号');
@@ -499,5 +578,3 @@
     </script>
 </body>
 </html>
-
-

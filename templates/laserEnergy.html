@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- JS -->
+    <script type="text/javascript" src="/static/jsscripts/vue.js"></script>
+    <script type="text/javascript" src="/static/jsscripts/elementui/lib-master/index.js"></script>
+
+    <!-- Element UI -->
+    <link rel="stylesheet" href="/static/jsscripts/elementui/lib-master/theme-chalk/index.css">
+
+    <title>激光能量测试</title>
+
+    <style>
+        :root{
+            --color-bg: #f0f2f5;
+            --color-card: #ffffff;
+            --color-border: #d9d9d9;
+            --color-border-light: #e8e8e8;
+            --color-text-primary: #1f1f1f;
+            --color-text-secondary: #666666;
+            --color-primary: #1890ff;
+            --color-warning: #faad14;
+            --radius-sm: 2px;
+        }
+        html{ height:calc(100%); }
+        body{
+            background: var(--color-bg);
+            margin:0;
+            height:100%;
+            overflow-y:auto;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--color-text-primary);
+            font-size: 13px;
+        }
+        .page{ padding:12px; max-width: 800px; margin: 0 auto; }
+        .panel{
+            background: var(--color-card);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 12px;
+        }
+        .panel__hd{
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--color-border-light);
+            font-weight: 500;
+            font-size: 14px;
+        }
+        .panel__bd{
+            padding: 20px;
+        }
+        .info-text{
+            font-size: 16px;
+            color: var(--color-text-primary);
+            text-align: center;
+            padding: 40px 20px;
+        }
+        .el-alert{ border-radius: var(--radius-sm); }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="page">
+        <div class="panel">
+            <div class="panel__hd">激光能量测试</div>
+            <div class="panel__bd">
+                <el-alert
+                    title="使用单独的激光能量计测量激光能量与重频。"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                    style="font-size: 15px;">
+                </el-alert>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+new Vue({
+    el: '#app'
+});
+</script>
+</body>
+</html>

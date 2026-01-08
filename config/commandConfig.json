@@ -14,11 +14,13 @@
     "set_horizontal_axis_forword_move":"f/1aM1C{distance}R\r",
     "set_horizontal_axis_backword_move":"f/1aM1E{distance}R\r",
     "set_rotation_axis_forword_rotate":"f/1aM3C{angle}R\r",
-    "set_rotation_axis_backword_rotate":"f/1aM3E{angle}R\r"
+    "set_rotation_axis_backword_rotate":"f/1aM3E{angle}R\r",
+    "centering_1064nm_laser":"f/1aM1Z300000aM2Z300000W1W2aM1A61960aM2A64340R\r"
   },
   "delay_module": {
     "open": "h5a ad 01 00 ae",
     "close": "h5a ad 00 00 ad",
-    "delay_time_add_4ns": "h5a ac 0a 00 b6"
+    "delay_time_add_4ns": "h5a ac 0a 00 b6",
+    "set_delay_time": "dynamic"
   }
 }

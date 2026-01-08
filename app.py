@@ -1,14 +1,17 @@
 import os
 import sys
 import json
+import io
+from datetime import datetime
 from typing import final
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
 from flask_socketio import SocketIO, emit
 sys.path.append(os.getenv('MVCAM_COMMON_RUNENV') + "/Samples/python/MvImport")
 from MvCameraControl_class import MvCamera  # type: ignore
 from core.cameraService import CameraService, VirtualCameraService
 from core.sdiService import SDICameraService, SDI_AVAILABLE
 from core.commandService import command_service
+from core.databaseService import db_service
 serial_service = command_service._serial
 app = Flask(
     __name__,
@@ -38,6 +41,26 @@ except Exception as e:
 SERVER_HOST = _app_config.get('server', {}).get('host', '127.0.0.1')
 SERVER_PORT = _app_config.get('server', {}).get('port', 8090)
 SERVER_DEBUG = _app_config.get('server', {}).get('debug', True)
+
+# ========================加载相机配置===============================
+def _load_camera_config():
+    """加载相机配置文件"""
+    config_path = os.path.join(CONFIG_DIR, 'cameraConfig.json')
+    try:
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Warning: Failed to load cameraConfig.json: {e}")
+    return {"cameras": []}
+
+def _get_camera_ip(camera_id: int) -> str:
+    """从配置文件获取相机IP地址"""
+    config = _load_camera_config()
+    for cam in config.get('cameras', []):
+        if cam.get('id') == camera_id and cam.get('type') == 'mvcamera':
+            return cam.get('ip', '')
+    return ''
 
 # ========================Socket.IO 初始化===============================
 socketio = SocketIO(app, cors_allowed_origins='*')
@@ -131,6 +154,10 @@ def optical_axis():
 def laser_distance():
     return render_template("laserDistance.html")
 
+@app.route('/laserEnergy', methods=["GET"])
+def laser_energy():
+    return render_template("laserEnergy.html")
+
 @app.route('/dynamicTarget', methods=["GET"])
 def dynamic_target():
     return render_template("dynamicTarget.html")
@@ -138,6 +165,13 @@ def dynamic_target():
 @app.route('/testRecord', methods=["GET"])
 def test_record():
     return render_template("testRecord.html")
+
+# 静态文件路由 - 用于访问保存的测试图片
+@app.route('/data/<path:filename>')
+def serve_data_file(filename):
+    """提供data目录下的文件访问"""
+    data_dir = os.path.join(os.getcwd(), 'data')
+    return send_from_directory(data_dir, filename)
 
 # =======================================================================
 
@@ -328,6 +362,7 @@ def upload_virtual_camera_image():
     上传静态图像到虚拟相机(相机4)进行分析
 
     接受multipart/form-data格式的图像文件
+    可选参数: threshold (二值化阈值), medianKernelSize (中值滤波核大小)
     """
     try:
         if 'image' not in request.files:
@@ -340,6 +375,18 @@ def upload_virtual_camera_image():
         # 读取图像数据
         image_data = file.read()
         filename = file.filename
+
+        # 更新虚拟相机参数（如果前端传递了参数）
+        if 'threshold' in request.form:
+            try:
+                virtualCam.threshold = int(request.form['threshold'])
+            except ValueError:
+                pass
+        if 'medianKernelSize' in request.form:
+            try:
+                virtualCam.median_kernel_size = int(request.form['medianKernelSize'])
+            except ValueError:
+                pass
 
         # 使用虚拟相机处理图像
         result = virtualCam.uploadImage(image_data, filename)
@@ -470,10 +517,20 @@ def send_command():
         device = data.get('device')
         cmd = data.get('cmd')
         params = data.get('params')
-        wait_response = data.get('wait_response')
-        timeout = data.get('timeout')
-        success, message, response_bytes = command_service.send(device, cmd, params, wait_response=wait_response, timeout=timeout)
-        return jsonify({'success': success, 'message': message, 'response': response_bytes.hex()})
+        wait_response = data.get('wait_response', True)
+        timeout = data.get('timeout', 2.0)
+        success, message, response_bytes, decode_result = command_service.send(
+            device, cmd, params, wait_response=wait_response, timeout=timeout
+        )
+        result = {
+            'success': success,
+            'message': message,
+            'response': response_bytes.hex() if response_bytes else ''
+        }
+        # 如果有解码结果，添加到返回值
+        if decode_result is not None:
+            result['decode_result'] = decode_result
+        return jsonify(result)
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
@@ -482,6 +539,630 @@ def get_all_commands():
     """获取所有指令"""
     commands = command_service.list_commands()  # 返回的是一个Dict
     return jsonify({'success': True, 'commands': commands})
+
+@app.route('/api/command/config', methods=['GET'])
+def get_command_config():
+    """获取完整的指令配置（包含模板）"""
+    try:
+        config = command_service._load_config()
+        return jsonify(config)
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+# ==================================================================================
+
+# =========================测试记录 API (串口日志 + 光轴测试)===========================
+
+# --------------------- 串口日志 API ---------------------
+@app.route('/api/logs/serial', methods=['GET'])
+def get_serial_logs():
+    """
+    查询串口日志
+    查询参数:
+        - device: 设备筛选
+        - port: 串口筛选
+        - start_time: 开始时间 (ISO格式)
+        - end_time: 结束时间 (ISO格式)
+        - limit: 返回数量限制 (默认100)
+        - offset: 偏移量 (默认0)
+    """
+    try:
+        device = request.args.get('device')
+        port = request.args.get('port')
+        start_time = request.args.get('start_time')
+        end_time = request.args.get('end_time')
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+
+        result = db_service.get_serial_logs(
+            device=device,
+            port=port,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset
+        )
+        return jsonify({'success': True, **result})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/logs/serial/<int:log_id>', methods=['DELETE'])
+def delete_serial_log(log_id):
+    """删除单条串口日志"""
+    try:
+        success = db_service.delete_serial_log(log_id)
+        if success:
+            return jsonify({'success': True, 'message': '删除成功'})
+        else:
+            return jsonify({'success': False, 'message': '记录不存在'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/logs/serial/clear', methods=['POST'])
+def clear_serial_logs():
+    """清空所有串口日志"""
+    try:
+        count = db_service.clear_serial_logs()
+        return jsonify({'success': True, 'message': f'已清空 {count} 条记录'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+# --------------------- 光轴测试记录 API ---------------------
+@app.route('/api/tests/optical-axis', methods=['GET'])
+def get_optical_tests():
+    """
+    查询光轴测试记录
+    查询参数:
+        - start_time: 开始时间 (ISO格式)
+        - end_time: 结束时间 (ISO格式)
+        - limit: 返回数量限制 (默认50)
+        - offset: 偏移量 (默认0)
+    """
+    try:
+        start_time = request.args.get('start_time')
+        end_time = request.args.get('end_time')
+        limit = int(request.args.get('limit', 50))
+        offset = int(request.args.get('offset', 0))
+
+        result = db_service.get_optical_tests(
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset
+        )
+        return jsonify({'success': True, **result})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/tests/optical-axis/<int:test_id>', methods=['GET'])
+def get_optical_test(test_id):
+    """获取单条光轴测试记录"""
+    try:
+        record = db_service.get_optical_test(test_id)
+        if record:
+            return jsonify({'success': True, 'record': record})
+        else:
+            return jsonify({'success': False, 'message': '记录不存在'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/tests/optical-axis', methods=['POST'])
+def save_optical_test():
+    """
+    保存光轴测试记录 (创建基准光轴记录)
+
+    请求体JSON:
+        - operator: 操作人员
+        - base_camera_id: 基准相机ID
+        - base_camera_name: 基准相机名称
+        - base_image: 基准图片base64数据
+        - base_width: 基准图像宽度
+        - base_height: 基准图像高度
+        - base_centroid_x: 基准质心X
+        - base_centroid_y: 基准质心Y
+        - base_focal_length: 基准焦距(mm)
+        - base_pixel_size: 基准像元大小(μm)
+        - base_offset_x: 基准偏移X(deg)
+        - base_offset_y: 基准偏移Y(deg)
+    """
+    try:
+        data = request.get_json()
+
+        # 保存基准图片
+        base_image_path = None
+        if data.get('base_image'):
+            base_image_path = db_service.save_image_base64(data['base_image'], 'base')
+
+        record_data = {
+            'operator': data.get('operator'),
+            'base_camera_id': data.get('base_camera_id'),
+            'base_camera_name': data.get('base_camera_name'),
+            'base_image_path': base_image_path,
+            'base_width': data.get('base_width'),
+            'base_height': data.get('base_height'),
+            'base_centroid_x': data.get('base_centroid_x'),
+            'base_centroid_y': data.get('base_centroid_y'),
+            'base_focal_length': data.get('base_focal_length'),
+            'base_pixel_size': data.get('base_pixel_size'),
+            'base_offset_x': data.get('base_offset_x'),
+            'base_offset_y': data.get('base_offset_y'),
+        }
+
+        record_id = db_service.save_optical_test(record_data)
+        return jsonify({'success': True, 'id': record_id, 'message': '基准光轴记录已保存'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/tests/optical-axis/<int:test_id>', methods=['PUT'])
+def update_optical_test(test_id):
+    """
+    更新光轴测试记录 (补充测试光轴数据或备注)
+
+    请求体JSON:
+        - test_camera_id: 测试相机ID
+        - test_camera_name: 测试相机名称
+        - test_image: 测试图片base64数据
+        - test_width: 测试图像宽度
+        - test_height: 测试图像高度
+        - test_centroid_x: 测试质心X
+        - test_centroid_y: 测试质心Y
+        - test_focal_length: 测试焦距(mm)
+        - test_pixel_size: 测试像元大小(μm)
+        - test_offset_x: 测试偏移X(deg)
+        - test_offset_y: 测试偏移Y(deg)
+        - remark: 备注
+    """
+    try:
+        data = request.get_json()
+        update_data = {}
+
+        # 保存测试图片
+        if data.get('test_image'):
+            test_image_path = db_service.save_image_base64(data['test_image'], 'test')
+            update_data['test_image_path'] = test_image_path
+
+        # 收集测试光轴数据
+        for field in ['test_camera_id', 'test_camera_name', 'test_width', 'test_height',
+                      'test_centroid_x', 'test_centroid_y', 'test_focal_length',
+                      'test_pixel_size', 'test_offset_x', 'test_offset_y', 'remark']:
+            if field in data:
+                update_data[field] = data[field]
+
+        if not update_data:
+            return jsonify({'success': False, 'message': '没有要更新的数据'})
+
+        success = db_service.update_optical_test(test_id, update_data)
+        if success:
+            return jsonify({'success': True, 'message': '测试记录已更新'})
+        else:
+            return jsonify({'success': False, 'message': '记录不存在或更新失败'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/tests/optical-axis/<int:test_id>', methods=['DELETE'])
+def delete_optical_test(test_id):
+    """删除光轴测试记录（同时删除关联图片）"""
+    try:
+        success = db_service.delete_optical_test(test_id)
+        if success:
+            return jsonify({'success': True, 'message': '删除成功'})
+        else:
+            return jsonify({'success': False, 'message': '记录不存在'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+# --------------------- 导出 API ---------------------
+@app.route('/api/export/serial-logs/excel', methods=['GET'])
+def export_serial_logs_excel():
+    """导出串口日志为Excel"""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, Border, Side
+
+        # 获取所有日志
+        result = db_service.get_serial_logs(limit=1000, offset=0)
+        logs = result['logs']
+
+        # 创建工作簿
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = '串口日志'
+
+        # 设置表头
+        headers = ['ID', '时间', '设备', '串口', '指令', '参数', '发送数据(HEX)', '返回数据(HEX)', '状态', '消息']
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
+
+        # 填充数据
+        for row, log in enumerate(logs, 2):
+            ws.cell(row=row, column=1, value=log['id'])
+            # UTC时间转换为本地时间
+            timestamp = log['timestamp']
+            if timestamp:
+                try:
+                    utc_str = str(timestamp).replace(' ', 'T')
+                    if not utc_str.endswith('Z') and '+' not in utc_str:
+                        utc_str += '+00:00'
+                    utc_dt = datetime.fromisoformat(utc_str.replace('Z', '+00:00'))
+                    local_dt = utc_dt.astimezone()
+                    timestamp = local_dt.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    pass
+            ws.cell(row=row, column=2, value=timestamp)
+            ws.cell(row=row, column=3, value=log['device'])
+            ws.cell(row=row, column=4, value=log['port'])
+            ws.cell(row=row, column=5, value=log['command'])
+            ws.cell(row=row, column=6, value=log['params'])
+            ws.cell(row=row, column=7, value=log['cmd_bytes'])
+            ws.cell(row=row, column=8, value=log['response_bytes'])
+            ws.cell(row=row, column=9, value='成功' if log['success'] else '失败')
+            ws.cell(row=row, column=10, value=log['message'])
+
+        # 调整列宽
+        column_widths = [8, 20, 15, 10, 20, 30, 30, 30, 8, 40]
+        for col, width in enumerate(column_widths, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = width
+
+        # 保存到内存
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        filename = f'serial_logs_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        as_attachment=True, download_name=filename)
+    except ImportError:
+        return jsonify({'success': False, 'message': '请安装openpyxl库: pip install openpyxl'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/export/optical-tests/excel', methods=['GET'])
+def export_optical_tests_excel():
+    """导出光轴测试记录为Excel"""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, Alignment
+
+        # 获取所有记录
+        result = db_service.get_optical_tests(limit=1000, offset=0)
+        records = result['records']
+
+        # 创建工作簿
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = '光轴测试记录'
+
+        # 设置表头
+        headers = ['ID', '测试时间',
+                  '基准相机ID', '基准相机', '基准图像路径', '基准宽度', '基准高度',
+                  '基准质心X', '基准质心Y', '基准焦距(mm)', '基准像元(μm)',
+                  '基准偏移X(°)', '基准偏移Y(°)',
+                  '测试相机ID', '测试相机', '测试图像路径', '测试宽度', '测试高度',
+                  '测试质心X', '测试质心Y', '测试焦距(mm)', '测试像元(μm)',
+                  '测试偏移X(°)', '测试偏移Y(°)', '备注']
+
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
+
+        # 填充数据
+        for row, rec in enumerate(records, 2):
+            ws.cell(row=row, column=1, value=rec['id'])
+            # UTC时间转换为本地时间
+            test_time = rec['test_time']
+            if test_time:
+                try:
+                    utc_str = str(test_time).replace(' ', 'T')
+                    if not utc_str.endswith('Z') and '+' not in utc_str:
+                        utc_str += '+00:00'
+                    utc_dt = datetime.fromisoformat(utc_str.replace('Z', '+00:00'))
+                    local_dt = utc_dt.astimezone()
+                    test_time = local_dt.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    pass
+            ws.cell(row=row, column=2, value=test_time)
+            ws.cell(row=row, column=3, value=rec['base_camera_id'])
+            ws.cell(row=row, column=4, value=rec['base_camera_name'])
+            ws.cell(row=row, column=5, value=rec['base_image_path'])
+            ws.cell(row=row, column=6, value=rec['base_width'])
+            ws.cell(row=row, column=7, value=rec['base_height'])
+            ws.cell(row=row, column=8, value=rec['base_centroid_x'])
+            ws.cell(row=row, column=9, value=rec['base_centroid_y'])
+            ws.cell(row=row, column=10, value=rec['base_focal_length'])
+            ws.cell(row=row, column=11, value=rec['base_pixel_size'])
+            ws.cell(row=row, column=12, value=rec['base_offset_x'])
+            ws.cell(row=row, column=13, value=rec['base_offset_y'])
+            ws.cell(row=row, column=14, value=rec['test_camera_id'])
+            ws.cell(row=row, column=15, value=rec['test_camera_name'])
+            ws.cell(row=row, column=16, value=rec['test_image_path'])
+            ws.cell(row=row, column=17, value=rec['test_width'])
+            ws.cell(row=row, column=18, value=rec['test_height'])
+            ws.cell(row=row, column=19, value=rec['test_centroid_x'])
+            ws.cell(row=row, column=20, value=rec['test_centroid_y'])
+            ws.cell(row=row, column=21, value=rec['test_focal_length'])
+            ws.cell(row=row, column=22, value=rec['test_pixel_size'])
+            ws.cell(row=row, column=23, value=rec['test_offset_x'])
+            ws.cell(row=row, column=24, value=rec['test_offset_y'])
+            ws.cell(row=row, column=25, value=rec['remark'])
+
+        # 保存到内存
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        filename = f'optical_tests_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        as_attachment=True, download_name=filename)
+    except ImportError:
+        return jsonify({'success': False, 'message': '请安装openpyxl库: pip install openpyxl'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/export/optical-test/<int:test_id>/pdf', methods=['GET'])
+def export_optical_test_pdf(test_id):
+    """导出单条光轴测试记录为PDF报告（单页A4）"""
+    try:
+        # 解决 reportlab 与 Python/OpenSSL 兼容性问题
+        import hashlib
+        _orig_md5 = hashlib.md5
+        def _patched_md5(*args, **kwargs):
+            kwargs.pop('usedforsecurity', None)
+            return _orig_md5(*args, **kwargs)
+        hashlib.md5 = _patched_md5
+
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        record = db_service.get_optical_test(test_id)
+        if not record:
+            return jsonify({'success': False, 'message': '记录不存在'})
+
+        # 尝试注册中文字体
+        font_name = 'Helvetica'
+        try:
+            font_paths = [
+                'C:/Windows/Fonts/simhei.ttf',
+                'C:/Windows/Fonts/msyh.ttc',
+                'simhei.ttf',
+            ]
+            for fp in font_paths:
+                try:
+                    pdfmetrics.registerFont(TTFont('SimHei', fp))
+                    font_name = 'SimHei'
+                    break
+                except:
+                    continue
+        except:
+            pass
+
+        def fmt(val, decimals=2):
+            if val is None:
+                return '-'
+            return f'{val:.{decimals}f}'
+
+        # 创建PDF - 紧凑边距
+        output = io.BytesIO()
+        doc = SimpleDocTemplate(
+            output,
+            pagesize=A4,
+            topMargin=12*mm,
+            bottomMargin=10*mm,
+            leftMargin=15*mm,
+            rightMargin=15*mm
+        )
+        elements = []
+
+        # 样式定义 - 紧凑字体
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle', fontName=font_name, fontSize=18,
+            textColor=colors.HexColor('#1890ff'), spaceAfter=8, alignment=1
+        )
+        heading_style = ParagraphStyle(
+            'CustomHeading', fontName=font_name, fontSize=11,
+            textColor=colors.HexColor('#333333'), spaceBefore=6, spaceAfter=4
+        )
+        small_style = ParagraphStyle(
+            'Small', fontName=font_name, fontSize=9, textColor=colors.HexColor('#666666')
+        )
+
+        # 标题
+        elements.append(Paragraph('光轴一致性测试报告', title_style))
+
+        # 基本信息 - 单行
+        test_time = record['test_time'] or '-'
+        if test_time != '-':
+            # SQLite CURRENT_TIMESTAMP 存储的是UTC时间，转换为本地时间
+            try:
+                from datetime import timezone
+                utc_str = str(test_time).replace(' ', 'T')
+                if not utc_str.endswith('Z') and '+' not in utc_str:
+                    utc_str += '+00:00'  # 标记为UTC
+                utc_dt = datetime.fromisoformat(utc_str.replace('Z', '+00:00'))
+                local_dt = utc_dt.astimezone()  # 转换为本地时间
+                test_time = local_dt.strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                # 解析失败，使用简单格式化
+                if 'T' in str(test_time):
+                    test_time = str(test_time).replace('T', ' ')[:19]
+
+        info_data = [[
+            f"编号: #{record['id']}",
+            f"测试时间: {test_time}",
+            f"操作人员: {record.get('operator') or '-'}"
+        ]]
+        info_table = Table(info_data, colWidths=[50*mm, 70*mm, 60*mm])
+        info_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#666666')),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+            ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(info_table)
+        elements.append(Spacer(1, 4*mm))
+
+        # 准备图片
+        base_img = None
+        test_img = None
+        img_width, img_height = 55*mm, 42*mm
+
+        if record.get('base_image_path'):
+            try:
+                img_path = os.path.join(os.getcwd(), record['base_image_path'])
+                if os.path.exists(img_path):
+                    base_img = RLImage(img_path, width=img_width, height=img_height)
+            except:
+                pass
+
+        if record.get('test_image_path'):
+            try:
+                img_path = os.path.join(os.getcwd(), record['test_image_path'])
+                if os.path.exists(img_path):
+                    test_img = RLImage(img_path, width=img_width, height=img_height)
+            except:
+                pass
+
+        # 双栏布局 - 基准光轴 | 测试光轴
+        col_width = 85*mm
+        row_height = 5.5*mm
+
+        # 表头
+        header_data = [['基准光轴', '测试光轴']]
+        header_table = Table(header_data, colWidths=[col_width, col_width])
+        header_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 12),
+            ('TEXTCOLOR', (0, 0), (0, 0), colors.HexColor('#52c41a')),
+            ('TEXTCOLOR', (1, 0), (1, 0), colors.HexColor('#fa8c16')),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#f6ffed')),
+            ('BACKGROUND', (1, 0), (1, 0), colors.HexColor('#fff7e6')),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#d9d9d9')),
+        ]))
+        elements.append(header_table)
+
+        # 数据对比表格
+        data_rows = [
+            ['相机', record['base_camera_name'] or str(record['base_camera_id'] or '-'),
+             '相机', record['test_camera_name'] or str(record['test_camera_id'] or '-')],
+            ['尺寸', f"{record['base_width'] or '-'}x{record['base_height'] or '-'}",
+             '尺寸', f"{record['test_width'] or '-'}x{record['test_height'] or '-'}"],
+            ['质心', f"({fmt(record['base_centroid_x'])}, {fmt(record['base_centroid_y'])})",
+             '质心', f"({fmt(record['test_centroid_x'])}, {fmt(record['test_centroid_y'])})"],
+            ['焦距', f"{fmt(record['base_focal_length'])} mm",
+             '焦距', f"{fmt(record['test_focal_length'])} mm"],
+            ['像元', f"{fmt(record['base_pixel_size'])} um",
+             '像元', f"{fmt(record['test_pixel_size'])} um"],
+            ['偏移X', f"{fmt(record['base_offset_x'], 4)}°",
+             '偏移X', f"{fmt(record['test_offset_x'], 4)}°"],
+            ['偏移Y', f"{fmt(record['base_offset_y'], 4)}°",
+             '偏移Y', f"{fmt(record['test_offset_y'], 4)}°"],
+        ]
+
+        data_table = Table(data_rows, colWidths=[18*mm, 67*mm, 18*mm, 67*mm], rowHeights=[row_height]*7)
+        data_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#888888')),
+            ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#888888')),
+            ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#333333')),
+            ('TEXTCOLOR', (3, 0), (3, -1), colors.HexColor('#333333')),
+            ('BACKGROUND', (0, 0), (1, -1), colors.HexColor('#fafafa')),
+            ('BACKGROUND', (2, 0), (3, -1), colors.HexColor('#fffbf0')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e8e8e8')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+        elements.append(data_table)
+
+        # 图片行
+        if base_img or test_img:
+            elements.append(Spacer(1, 3*mm))
+            img_row = [[base_img or '', test_img or '']]
+            img_table = Table(img_row, colWidths=[col_width, col_width])
+            img_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('BOX', (0, 0), (0, 0), 0.5, colors.HexColor('#d9d9d9') if base_img else colors.white),
+                ('BOX', (1, 0), (1, 0), 0.5, colors.HexColor('#d9d9d9') if test_img else colors.white),
+                ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#fafafa') if base_img else colors.white),
+                ('BACKGROUND', (1, 0), (1, 0), colors.HexColor('#fafafa') if test_img else colors.white),
+            ]))
+            elements.append(img_table)
+
+        # 备注
+        if record.get('remark'):
+            elements.append(Spacer(1, 4*mm))
+            remark_data = [['备注', record['remark']]]
+            remark_table = Table(remark_data, colWidths=[18*mm, 152*mm])
+            remark_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), font_name),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('TEXTCOLOR', (0, 0), (0, 0), colors.HexColor('#d48806')),
+                ('TEXTCOLOR', (1, 0), (1, 0), colors.HexColor('#666666')),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fffbe6')),
+                ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#ffe58f')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            elements.append(remark_table)
+
+        # 页脚
+        elements.append(Spacer(1, 6*mm))
+        footer_data = [[
+            '光轴一致性测试系统',
+            f"报告生成: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        ]]
+        footer_table = Table(footer_data, colWidths=[90*mm, 80*mm])
+        footer_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#999999')),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ]))
+        elements.append(footer_table)
+
+        doc.build(elements)
+        output.seek(0)
+
+        filename = f'optical_test_report_{test_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        return send_file(output, mimetype='application/pdf', as_attachment=True, download_name=filename)
+
+    except ImportError as e:
+        return jsonify({'success': False, 'message': f'请安装reportlab库: pip install reportlab. 错误: {str(e)}'})
+    except Exception as e:
+        import traceback
+        return jsonify({'success': False, 'message': str(e), 'trace': traceback.format_exc()})
 
 # ==================================================================================
 
@@ -581,12 +1262,18 @@ def handle_camera_connect(data):
             }, room=request.sid)
             return
 
-        # MvCamera真实相机（相机1和2）：初始化并打开设备
-        if not cam.initCamera():
-            emit('camera_error', {'success': False, 'message': '初始化相机失败', 'cameraId': int(camera_id)}, room=request.sid)
+        # MvCamera真实相机（相机1和2）：使用IP地址查找并连接
+        camera_ip = _get_camera_ip(int(camera_id))
+        if not camera_ip:
+            emit('camera_error', {'success': False, 'message': f'未找到相机{camera_id}的IP配置', 'cameraId': int(camera_id)}, room=request.sid)
+            return
+
+        # 枚举设备并找到匹配IP的相机
+        if not cam.initCameraByIp(camera_ip):
+            emit('camera_error', {'success': False, 'message': f'未找到IP为 {camera_ip} 的相机设备', 'cameraId': int(camera_id)}, room=request.sid)
             return
         if not cam.connectAndOpenCamera():
-            emit('camera_error', {'success': False, 'message': '连接或开始采集失败', 'cameraId': int(camera_id)}, room=request.sid)
+            emit('camera_error', {'success': False, 'message': f'连接或开始采集失败 (IP: {camera_ip})', 'cameraId': int(camera_id)}, room=request.sid)
             return
 
         # 记录客户端选择的相机
@@ -664,7 +1351,7 @@ def handle_camera_set_param(data):
 
         cam = _get_camera_by_id(camera_id)
 
-        # 虚拟相机（相机4）只支持 threshold 和 imageMode
+        # 虚拟相机（相机4）只支持 threshold、medianKernelSize 和 imageMode
         if isinstance(cam, VirtualCameraService):
             success = False
             message = ""
@@ -672,6 +1359,9 @@ def handle_camera_set_param(data):
             if param_type == 'threshold':
                 success = cam.setThreshold(value)
                 message = "设置二值化阈值成功" if success else "设置二值化阈值失败"
+            elif param_type == 'medianKernelSize':
+                success = cam.setMedianKernelSize(int(value))
+                message = f"设置中值滤波核大小为 {value}" if success else "设置中值滤波核大小失败"
             elif param_type == 'imageMode':
                 is_binary = True if int(value) == 1 else False
                 success = cam.setReturnBinaryMode(is_binary)
@@ -695,6 +1385,9 @@ def handle_camera_set_param(data):
             if param_type == 'threshold':
                 success = cam.setThreshold(int(value))
                 message = "设置二值化阈值成功" if success else "设置二值化阈值失败"
+            elif param_type == 'medianKernelSize':
+                success = cam.setMedianKernelSize(int(value))
+                message = f"设置中值滤波核大小为 {value}" if success else "设置中值滤波核大小失败"
             elif param_type == 'imageMode':
                 success = cam.setImageMode(int(value))
                 mode_str = "二值化图" if int(value) == 1 else "原始图"
@@ -742,6 +1435,9 @@ def handle_camera_set_param(data):
         elif param_type == 'threshold':
             success = cam.setThreshold(value)
             message = "设置二值化阈值成功" if success else "设置二值化阈值失败"
+        elif param_type == 'medianKernelSize':
+            success = cam.setMedianKernelSize(int(value))
+            message = f"设置中值滤波核大小为 {value}" if success else "设置中值滤波核大小失败"
         elif param_type == 'imageMode':
             is_binary = True if int(value) == 1 else False
             success = cam.setReturnBinaryMode(is_binary)

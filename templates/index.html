@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -11,6 +11,25 @@
 
     <link rel="stylesheet" href="/static/jsscripts/elementui/lib-master/theme-chalk/index.css">
     <style>
+        /* ============ 全局基础样式 - 浅色极简工业风 ============ */
+        :root{
+            --color-bg: #f0f2f5;
+            --color-card: #ffffff;
+            --color-border: #d9d9d9;
+            --color-border-light: #e8e8e8;
+            --color-text-primary: #1f1f1f;
+            --color-text-secondary: #666666;
+            --color-text-placeholder: #999999;
+            --color-primary: #1890ff;
+            --color-success: #52c41a;
+            --color-warning: #faad14;
+            --color-danger: #f5222d;
+            --radius-sm: 2px;
+            --spacing-xs: 4px;
+            --spacing-sm: 6px;
+            --spacing-md: 8px;
+            --spacing-lg: 10px;
+        }
         html {
             height: 100%;
         }
@@ -18,7 +37,10 @@
             margin: 0;
             height: 100%;
             overflow: hidden;
-            background: #f5f7fa;
+            background: var(--color-bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--color-text-primary);
+            font-size: 13px;
         }
         /* 布局容器 */
         .app-root {
@@ -32,23 +54,25 @@
             display: flex;
             flex-direction: column;
         }
-        
+
         /* 顶部样式 */
         .topbar {
-            background: #ffffff;
-            border-bottom: 1px solid #ebeef5;
+            background: var(--color-card);
+            border-bottom: 1px solid var(--color-border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            flex-shrink: 0; /* 防止被压缩 */
+            flex-shrink: 0;
+            padding: 0 16px;
         }
         .topbar-title {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 600;
-            color: #303133;
+            color: var(--color-text-primary);
         }
         .topbar-user {
-            color: #606266;
+            color: var(--color-text-secondary);
+            font-size: 13px;
         }
         .link-margin-left {
             margin-left: 12px;
@@ -57,8 +81,8 @@
         /* 菜单栏样式 */
         .menubar {
             padding: 0;
-            background: #ffffff;
-            border-bottom: 1px solid #ebeef5;
+            background: var(--color-card);
+            border-bottom: 1px solid var(--color-border);
             flex-shrink: 0;
         }
         .menu-no-border {
@@ -69,30 +93,31 @@
         .main-content-wrapper {
             flex: 1;
             position: relative;
-            overflow: hidden; /* 隐藏溢出，iframe内部处理滚动 */
+            overflow: hidden;
             box-sizing: border-box;
         }
 
         /* 首页内容样式 */
         .home-content {
-            padding: 16px;
+            padding: 12px;
             height: 100%;
-            overflow: auto; /* 首页内容可滚动 */
+            overflow: auto;
             box-sizing: border-box;
         }
         .two-cols {
             display: flex;
-            gap: 16px;
+            gap: 12px;
             height: 100%;
         }
         .left-panel {
             flex: 1;
-            background: #ffffff;
+            background: var(--color-card);
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--color-border);
         }
         .intro-image {
             max-width: 100%;
@@ -101,13 +126,22 @@
         }
         .right-panel {
             flex: 1;
-            background: #ffffff;
+            background: var(--color-card);
             padding: 16px;
             overflow: auto;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--color-border);
         }
-        .title-no-margin {
+        .right-panel h2 {
             margin-top: 0;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+        .right-panel p {
+            color: var(--color-text-secondary);
+            line-height: 1.6;
+            font-size: 13px;
         }
 
         /* Iframe 容器样式 */
@@ -121,15 +155,29 @@
             border: none;
             display: block;
         }
+
+        /* ============ Element UI 组件覆盖 ============ */
+        .el-menu--horizontal>.el-menu-item {
+            height: 40px;
+            line-height: 40px;
+            font-size: 13px;
+        }
+        .el-menu--horizontal>.el-menu-item.is-active {
+            border-bottom-color: var(--color-primary);
+            color: var(--color-primary);
+        }
+        .el-link--primary {
+            color: var(--color-primary);
+        }
     </style>
-    
+
     <title>光电测试系统软件平台</title>
 </head>
 
 <body>
     <div id="app" class="app-root">
         <el-container class="layout-container">
-            <el-header height="60px" class="topbar">
+            <el-header height="50px" class="topbar">
                 <div class="topbar-title">光电测试系统软件平台</div>
                 <div class="topbar-user">
                     用户：{{ usrname }}
@@ -137,34 +185,34 @@
                 </div>
             </el-header>
 
-            <el-header height="44px" class="menubar">
+            <el-header height="40px" class="menubar">
                 <el-menu mode="horizontal" :default-active="currentKey"
                         background-color="#ffffff"
-                        text-color="#303133" active-text-color="#409EFF"
+                        text-color="#666666" active-text-color="#1890ff"
                         class="menu-no-border" @select="handleSelect">
                     <el-menu-item index="index">首页</el-menu-item>
                     <el-menu-item index="serialSettingUrl">串口设置</el-menu-item>
                     <el-menu-item index="opticalAxisUrl">光轴一致性测试</el-menu-item>
                     <el-menu-item index="dynamicTargetUrl">动态目标模拟</el-menu-item>
                     <el-menu-item index="laserDistanceUrl">激光模拟测距</el-menu-item>
-                    <el-menu-item index="laserEnergyUrl">激光能量测试</el-menu-item> 
+                    <el-menu-item index="laserEnergyUrl">激光能量测试</el-menu-item>
                     <el-menu-item index="testRecordUrl">测试记录</el-menu-item>
                 </el-menu>
             </el-header>
 
             <div class="main-content-wrapper">
-                
+
                 <div class="home-content" v-show="currentKey === 'index'">
                     <div class="two-cols">
                         <div class="left-panel">
                             <img src="/static/images/system_intro.png" alt="系统介绍" class="intro-image" />
                         </div>
                         <div class="right-panel">
-                            <h2 class="title-no-margin">光电测试系统软件平台使用说明</h2>
+                            <h2>光电测试系统软件平台使用说明</h2>
                             <p>本平台用于支撑光电测试相关实验流程与数据记录，提供基础的设备管理、测试任务组织与结果查看能力。请在进行任何操作前，确认设备连接与安全注意事项。</p>
                             <p>使用前请阅读操作规程：避免直视激光，佩戴必要的防护器材；在测试区域保持整洁，确保电缆与设备稳固；进行能量或测距测试时，注意周围人员与反射面，防止误伤。</p>
-                            <p>若首次使用，建议先进入“串口设置”完成与设备的通信配置，然后根据需要选择“光轴一致性测试”“动态目标模拟”“激光模拟测距”“激光能量测试”等功能模块。</p>
-                            <p>测试完成后，可在“测试记录”查看与导出报告。出现连接或权限问题时，请联系管理员或重新登录后重试。</p>
+                            <p>若首次使用，建议先进入"串口设置"完成与设备的通信配置，然后根据需要选择"光轴一致性测试""动态目标模拟""激光模拟测距""激光能量测试"等功能模块。</p>
+                            <p>测试完成后，可在"测试记录"查看与导出报告。出现连接或权限问题时，请联系管理员或重新登录后重试。</p>
                             <p>以上文字仅为占位示例，用于演示右侧内容区域可单独滚动的效果。请根据实际业务替换为正式说明文档。</p>
                             <p>为了展示滚动效果，附加一些额外文本：当内容高度超过区域高度时，可以在此区域内滚动，而页面整体保持固定，不发生全局滚动。</p>
                             <p>更多说明文本……更多说明文本……更多说明文本……更多说明文本……更多说明文本……更多说明文本……更多说明文本……更多说明文本……</p>
@@ -172,11 +220,11 @@
                     </div>
                 </div>
 
-                <div class="iframe-wrapper" 
-                     v-for="(url, key) in urlConfig" 
-                     :key="key" 
+                <div class="iframe-wrapper"
+                     v-for="(url, key) in urlConfig"
+                     :key="key"
                      v-show="currentKey === key">
-                    <iframe 
+                    <iframe
                         v-if="loadedKeys.includes(key)"
                         :src="url">
                     </iframe>
@@ -192,10 +240,8 @@
             data: {
                 usrname: "未登录",
                 admin: "admin",
-                
-                // 修改点：使用 currentKey 跟踪当前 Tab
+
                 currentKey: 'index',
-                // 修改点：使用 loadedKeys 跟踪已加载过的页面，实现懒加载
                 loadedKeys: [],
 
                 urlConfig: {
@@ -227,17 +273,11 @@
                     window.location.href = "/login";
                 },
                 handleSelect(key, keyPath) {
-                    // 修改点：更新当前激活的 key
                     this.currentKey = key;
 
-                    // 如果不是首页，且该页面从未加载过，则加入已加载列表
-                    // 这样 iframe 才会第一次创建并加载 URL
                     if (key !== 'index' && !this.loadedKeys.includes(key)) {
                         this.loadedKeys.push(key);
                     }
-                    
-                    // 可选：强制刷新（通常不需要，Vue会自动响应数据变化）
-                    // this.$forceUpdate();
                 },
 
             }

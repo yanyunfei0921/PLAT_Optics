@@ -65,6 +65,7 @@ class SDICameraService:
 
         # Image processing settings
         self.threshold = 128
+        self.median_kernel_size = 0  # 中值滤波核大小，0表示不滤波
         self.return_binary_image = False
 
         # SDI-specific parameters (different from MvCamera)
@@ -262,6 +263,10 @@ class SDICameraService:
         """
         height, width = gray_image.shape
 
+        # Apply median filter if set
+        if self.median_kernel_size > 0:
+            gray_image = cv2.medianBlur(gray_image, self.median_kernel_size)
+
         # Apply threshold for binary image
         _, binary = cv2.threshold(gray_image, self.threshold, 255, cv2.THRESH_BINARY)
 
@@ -322,6 +327,22 @@ class SDICameraService:
     def getThreshold(self) -> int:
         """Get binary threshold value."""
         return self.threshold
+
+    def setMedianKernelSize(self, size: int) -> bool:
+        """设置中值滤波核大小，0表示不滤波，必须为奇数"""
+        size = int(size)
+        if size < 0:
+            size = 0
+        if size > 0 and size % 2 == 0:
+            size += 1  # 确保是奇数
+        if size > 31:
+            size = 31  # 限制最大值
+        self.median_kernel_size = size
+        return True
+
+    def getMedianKernelSize(self) -> int:
+        """获取中值滤波核大小"""
+        return self.median_kernel_size
 
     def setBrightness(self, value: int) -> bool:
         """

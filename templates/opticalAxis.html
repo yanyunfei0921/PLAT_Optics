@@ -19,111 +19,404 @@
     <title>光轴对准</title>
 
     <style>
+        /* ============ 全局基础样式 - 浅色极简工业风 ============ */
+        :root{
+            --color-bg: #f0f2f5;
+            --color-card: #ffffff;
+            --color-border: #d9d9d9;
+            --color-border-light: #e8e8e8;
+            --color-text-primary: #1f1f1f;
+            --color-text-secondary: #666666;
+            --color-text-placeholder: #999999;
+            --color-primary: #1890ff;
+            --color-success: #52c41a;
+            --color-warning: #faad14;
+            --color-danger: #f5222d;
+            --radius-sm: 2px;
+            --spacing-xs: 4px;
+            --spacing-sm: 6px;
+            --spacing-md: 8px;
+            --spacing-lg: 10px;
+        }
         html{ height:calc(100%); }
-        body{ background:#f5f7fa; margin:0; height:100%; overflow-y:hidden; }
-        .page{ padding:16px; }
-        .card{ margin-bottom:12px; }
-        .toolbar{ display:flex; gap:8px; align-items:center; }
-        .row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+        body{
+            background: var(--color-bg);
+            margin:0;
+            height:100%;
+            overflow-y:hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--color-text-primary);
+            font-size: 13px;
+        }
+        .page{ padding:12px; }
+        .card{ margin-bottom:10px; }
+        .toolbar{ display:flex; gap:6px; align-items:center; }
+        .toolbar--wrap{ flex-wrap: wrap; }
+        .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
         .steps-bar{ flex:1; min-width:0; }
-        /* 压缩 Steps 高度与字号，使整体更“矮” */
-        .el-steps--simple{ padding:6px 8px; background:transparent; }
+        /* 压缩 Steps 高度与字号 */
+        .el-steps--simple{ padding:4px 6px; background:transparent; }
         .el-steps--simple .el-step__title{ font-size:12px; }
-        .el-steps--simple .el-step__head.is-process, 
+        .el-steps--simple .el-step__head.is-process,
         .el-steps--simple .el-step__head.is-finish{ transform:scale(0.9); }
         .el-steps--simple .el-step__arrow{ transform:scale(0.9); }
-        /* 次要文字色与 serialSetting 风格一致 */
-        .subtle{ color:#909399; }
+        /* 次要文字 */
+        .subtle{ color: var(--color-text-secondary); }
         .placeholder{
             height:320px;
-            border:1px dashed #dcdfe6;
-            background: #fff;
-            border-radius:4px;
+            border:1px dashed var(--color-border);
+            background: var(--color-card);
+            border-radius: var(--radius-sm);
             display:flex;
             align-items:center;
             justify-content:center;
-            color:#c0c4cc;
+            color: var(--color-text-placeholder);
         }
-        /* 更紧凑的顶部行高度 */
-        .topbar-card .el-card__body{ padding:6px 10px; }
-        .topbar-card .row{ gap:8px; }
+        /* 顶部栏紧凑样式 */
+        .topbar-card .el-card__body{ padding:4px 10px; }
+        .topbar-card .row{ gap:6px; }
         .topbar-card .el-steps--simple{ padding:2px 6px; }
         .topbar-card .el-steps--simple .el-step__title{ font-size:12px; line-height:16px; }
-        .topbar-card .toolbar .el-button--mini{ padding:2px 8px; line-height:16px; height:22px; }
+        .topbar-card .toolbar .el-button--mini{ padding:2px 6px; line-height:16px; height:22px; }
         .topbar-card .subtle{ font-size:12px; }
         /* L 形布局：左大（相机），右侧栏通高，底部在左下 */
-        .camera-layout{ 
-            display:grid; 
-            grid-template-columns: 1.4fr 840px; 
-            grid-template-rows: auto 100px; 
+        .camera-layout{
+            display:grid;
+            grid-template-columns: 1fr 840px;
+            grid-template-rows: 1fr auto;
             grid-template-areas: 'cam side' 'bottom side';
-            gap:12px; 
+            gap:10px;
+            height: calc(100vh - 120px);
+            max-height: calc(100vh - 120px);
+            overflow: hidden;
         }
         .panel{
-            background:#fff;
-            border:1px solid #ebeef5;
-            border-radius:4px;
+            background: var(--color-card);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
             overflow:hidden;
             display:flex;
             flex-direction:column;
             min-width:0;
+            min-height:0;
         }
-        .panel__hd{ 
-            padding:8px 10px; 
-            border-bottom:1px solid #ebeef5; 
-            font-weight:500; 
-            font-size:13px; 
-            color:#606266; 
-            display:flex; align-items:center; justify-content:space-between;
+        .panel__hd{
+            padding: var(--spacing-sm) var(--spacing-lg);
+            border-bottom: 1px solid var(--color-border-light);
+            font-weight: 500;
+            font-size: 13px;
+            color: var(--color-text-primary);
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            flex-shrink: 0;
+            background: var(--color-card);
         }
-        .panel__bd{ flex:1; display:flex; align-items:center; justify-content:center; background:#fafafa; }
-        .panel__bd--cam{ background:#000; color:#909399; }
+        .panel__bd{
+            flex:1;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            background: #fafafa;
+            min-height:0;
+            overflow:hidden;
+        }
+        .panel__bd--cam{ background:#000; color: var(--color-text-placeholder); }
         .panel__bd canvas, .panel__bd img{ max-width:100%; max-height:100%; display:block; }
-        .area-cam{ grid-area: cam; }
-        .area-side{ grid-area: side; }
-        .area-bottom{ grid-area: bottom; }
-        /* 固定 4:3 的相机区域（不随图像比例变化） */
-        .cam-viewport{ 
-            --cam-aspect: 75%; /* 4:3 */
-            position:relative; 
-            width:100%; 
-            background:#000;
-            max-width: calc((100vh - 320px) * 1.333);
-            margin: 0 auto;
+        /* 相机面板底部控制区 */
+        .panel__ft{
+            padding: var(--spacing-sm) var(--spacing-lg);
+            background: var(--color-card);
+            border-top: 1px solid var(--color-border-light);
+            flex-shrink: 0;
         }
-        .cam-viewport::before{ content:""; display:block; padding-top: var(--cam-aspect); }
-        .cam-viewport__media{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display: block;}
-        .cam-viewport__placeholder{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#c0c4cc; font-size:12px; }
+        .cam-slider-row{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: var(--spacing-xs);
+        }
+        .cam-slider-row:last-child{
+            margin-bottom: 0;
+        }
+        .cam-slider-row__label{
+            color: var(--color-text-secondary);
+            font-size: 12px;
+            white-space: nowrap;
+            min-width: 70px;
+        }
+        .cam-slider-row .el-slider{
+            flex: 1;
+            margin: 0 10px;
+        }
+        .cam-slider-row .el-input-number{
+            width: 90px !important;
+        }
+        .area-cam{
+            grid-area: cam;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .area-side{
+            grid-area: side;
+            display: flex;
+            flex-direction: column;
+            min-height: 0; /* 重要：允许flex收缩 */
+        }
+        .area-side .panel{
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .area-side .panel__bd{
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: flex-start;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-md);
+            overflow-y: auto;
+            min-height: 0;
+        }
+        .area-bottom{ grid-area: bottom; }
+        /* 相机画布容器 - 自适应高度 */
+        .cam-viewport{
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .cam-viewport__media{
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        .cam-viewport__placeholder{
+            position:absolute;
+            inset:0;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color: var(--color-text-placeholder);
+            font-size:12px;
+        }
+
+        /* 响应式布局 - 笔记本电脑 (<=1600px) */
+        @media (max-width: 1600px){
+            .camera-layout{
+                grid-template-columns: 1fr 760px;
+            }
+        }
+        /* 响应式布局 - 小屏幕笔记本 (<=1440px) */
+        @media (max-width: 1440px){
+            .camera-layout{
+                grid-template-columns: 1fr 700px;
+                gap: 10px;
+            }
+        }
+        /* 响应式布局 - 更小屏幕 (<=1366px) */
         @media (max-width: 1366px){
-            .camera-layout{ grid-template-columns: 1.2fr 760px; grid-template-rows: auto 100px; }
+            .camera-layout{
+                grid-template-columns: 1fr 650px;
+                gap: 8px;
+                height: calc(100vh - 120px);
+                max-height: calc(100vh - 120px);
+            }
+            .panel__ft{ padding: 6px 10px; }
+            .cam-slider-row{ margin-bottom: 4px; }
         }
         /* 侧栏阶段模块 */
-        .stage-item{ padding:10px; border:1px solid #ebeef5; border-radius:4px; background:#fff; }
-        .stage-item--active{ border-color:#409EFF; background:#ecf5ff; }
-        .stage-item__title{ font-weight:500; color:#303133; margin-bottom:4px; }
-        .stage-item__desc{ font-size:12px; color:#909399; }
-        /* 测试结果区域行间距适当增大 */
-        .stage-item--result .toolbar{ margin-top:6px; }
-        .area-side .panel__bd{ display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:8px; padding:10px; }
-        /* --- 测试结果状态文本样式 --- */
-        .text-placeholder { color: #C0C4CC; } /* 未输入：灰色 */
-        .text-value { color: #303133; font-weight: 600; } /* 已输入：加深高亮 */
-        .text-highlight-red { color: #F56C6C; font-weight: bold; font-size: 15px; } /* 最终结果：红色加粗 */
+        .stage-item{
+            padding: var(--spacing-md);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            background: var(--color-card);
+        }
+        .stage-item--active{
+            border-color: var(--color-primary);
+            background: #e6f7ff;
+        }
+        .stage-item__title{
+            font-weight: 500;
+            color: var(--color-text-primary);
+            margin-bottom: 2px;
+            font-size: 13px;
+        }
+        .stage-item__desc{
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+        /* 测试结果区域行间距 */
+        .stage-item--result .toolbar{ margin-top: var(--spacing-xs); }
+        /* 测试结果状态文本样式 */
+        .text-placeholder { color: var(--color-text-placeholder); }
+        .text-value { color: var(--color-text-primary); font-weight: 600; }
+        .text-highlight-red { color: var(--color-danger); font-weight: bold; font-size: 14px; }
 
-        /* --- 新增：针对相机显示区的头部样式覆写 --- */
+        /* 相机显示区头部样式 */
         .area-cam .panel__hd {
-            flex-direction: column;  /* 改为纵向排列：标题在上，按钮在下 */
-            align-items: flex-start; /* 内容左对齐 */
-            gap: 6px;                /* 标题和按钮之间的间距 */
+            flex-direction: column;
+            align-items: flex-start;
+            gap: var(--spacing-xs);
             padding: 6px 10px;       /* 稍微调整内边距以保持紧凑 */
             height: auto;            /* 允许高度随内容自动撑开 */
         }
 
         /* 确保原来右侧的工具栏占满宽度或保持左对齐，并处理间距 */
         .area-cam .panel__hd .toolbar {
-            margin-top: 2px;         /* 增加一点顶部微调 */
-            width: 100%;             /* 让工具栏宽度铺开 */
-            justify-content: flex-start; /* 按钮从左侧开始排列 */
+            margin-top: 2px;
+            width: 100%;
+            justify-content: flex-start;
+        }
+
+        /* ============ Element UI 组件样式覆写 - 极简工业风 ============ */
+        /* 按钮 */
+        .el-button{
+            border-radius: var(--radius-sm) !important;
+            font-weight: 400;
+        }
+        .el-button--primary{
+            background-color: var(--color-primary) !important;
+            border-color: var(--color-primary) !important;
+        }
+        .el-button--primary:hover,
+        .el-button--primary:focus{
+            background-color: #40a9ff !important;
+            border-color: #40a9ff !important;
+        }
+        .el-button--success{
+            background-color: var(--color-success) !important;
+            border-color: var(--color-success) !important;
+        }
+        .el-button--warning{
+            background-color: var(--color-warning) !important;
+            border-color: var(--color-warning) !important;
+        }
+        .el-button--danger{
+            background-color: var(--color-danger) !important;
+            border-color: var(--color-danger) !important;
+        }
+        .el-button--default{
+            border-color: var(--color-border) !important;
+            color: var(--color-text-primary) !important;
+        }
+        .el-button--default:hover,
+        .el-button--default:focus{
+            color: var(--color-primary) !important;
+            border-color: var(--color-primary) !important;
+            background-color: #e6f7ff !important;
+        }
+        .el-button--mini{
+            padding: 5px 10px !important;
+            font-size: 12px !important;
+        }
+        /* 输入框 */
+        .el-input__inner{
+            border-radius: var(--radius-sm) !important;
+            border-color: var(--color-border) !important;
+        }
+        .el-input__inner:focus{
+            border-color: var(--color-primary) !important;
+        }
+        /* 数字输入框 */
+        .el-input-number{
+            line-height: 28px !important;
+        }
+        .el-input-number--mini{
+            line-height: 24px !important;
+        }
+        .el-input-number--mini .el-input__inner{
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+        }
+        /* 下拉选择框 */
+        .el-select .el-input__inner{
+            border-radius: var(--radius-sm) !important;
+        }
+        /* 卡片 */
+        .el-card{
+            border-radius: var(--radius-sm) !important;
+            border-color: var(--color-border) !important;
+            box-shadow: none !important;
+        }
+        .el-card__body{
+            padding: 10px !important;
+        }
+        /* 对话框 */
+        .el-dialog{
+            border-radius: var(--radius-sm) !important;
+        }
+        .el-dialog__header{
+            padding: 12px 16px !important;
+            border-bottom: 1px solid var(--color-border-light);
+        }
+        .el-dialog__title{
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            color: var(--color-text-primary) !important;
+        }
+        .el-dialog__body{
+            padding: 16px !important;
+        }
+        /* 表单 */
+        .el-form-item{
+            margin-bottom: 12px !important;
+        }
+        .el-form-item__label{
+            color: var(--color-text-secondary) !important;
+            font-size: 12px !important;
+        }
+        /* 滑块 */
+        .el-slider__runway{
+            height: 4px !important;
+            background-color: var(--color-border-light) !important;
+        }
+        .el-slider__bar{
+            height: 4px !important;
+            background-color: var(--color-primary) !important;
+        }
+        .el-slider__button{
+            width: 12px !important;
+            height: 12px !important;
+            border-color: var(--color-primary) !important;
+        }
+        /* 开关 */
+        .el-switch.is-checked .el-switch__core{
+            border-color: var(--color-primary) !important;
+            background-color: var(--color-primary) !important;
+        }
+        /* 复选框 */
+        .el-checkbox__input.is-checked .el-checkbox__inner{
+            background-color: var(--color-primary) !important;
+            border-color: var(--color-primary) !important;
+        }
+        /* 下拉菜单 */
+        .el-dropdown-menu{
+            border-radius: var(--radius-sm) !important;
+            border-color: var(--color-border) !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+        }
+        /* 消息提示 */
+        .el-message{
+            border-radius: var(--radius-sm) !important;
+        }
+        /* 标签页 */
+        .el-tabs__item{
+            font-size: 13px !important;
+        }
+        .el-tabs__item.is-active{
+            color: var(--color-primary) !important;
+        }
+        .el-tabs__active-bar{
+            background-color: var(--color-primary) !important;
         }
     </style>
 </head>
@@ -203,53 +496,10 @@
                                 </el-dropdown-item>
                             </el-dropdown-menu>
                         </el-dropdown>
-                        <!-- 相机设置下拉菜单 - 根据相机类型显示不同UI -->
-                        <el-dropdown :hide-on-click="false" trigger="click" v-if="selectedCamera !== 4">
-                            <el-button size="mini" icon="el-icon-setting">
-                                相机设置<i class="el-icon-arrow-down el-icon--right"></i>
-                            </el-button>
-                            <el-dropdown-menu slot="dropdown" style="width: 260px; padding: 10px;">
-                                <!-- MvCamera设置 (相机1/2) -->
-                                <el-form v-if="selectedCamera === 1 || selectedCamera === 2" size="mini" label-width="80px">
-                                    <el-form-item label="曝光时间">
-                                        <el-input-number v-model="currentCamSettings.exposureTime" :min="10" :step="100" controls-position="right" style="width: 100%" @change="updateCameraParam('exposureTime')"></el-input-number>
-                                    </el-form-item>
-                                    <el-form-item label="帧率">
-                                        <el-input-number v-model="currentCamSettings.frameRate" :min="1" :max="60" controls-position="right" style="width: 100%" @change="updateCameraParam('frameRate')"></el-input-number>
-                                    </el-form-item>
-                                    <el-form-item label="增益">
-                                        <el-input-number v-model="currentCamSettings.gain" :min="0" :max="20" :step="0.1" controls-position="right" style="width: 100%" @change="updateCameraParam('gain')"></el-input-number>
-                                    </el-form-item>
-                                    <el-form-item label="黑白阈值">
-                                        <el-input-number v-model="currentCamSettings.threshold" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateCameraParam('threshold')"></el-input-number>
-                                    </el-form-item>
-                                    <el-form-item>
-                                        <el-button type="text" style="width: 100%; text-align: center;" @click="openAdvancedSettings">其他设置</el-button>
-                                    </el-form-item>
-                                </el-form>
-                                <!-- SDI相机设置 (相机3) -->
-                                <el-form v-else-if="selectedCamera === 3" size="mini" label-width="80px">
-                                    <el-form-item label="亮度">
-                                        <el-input-number v-model="sdiParams.brightness" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateSDIParam('brightness')"></el-input-number>
-                                    </el-form-item>
-                                    <el-form-item label="对比度">
-                                        <el-input-number v-model="sdiParams.contrast" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateSDIParam('contrast')"></el-input-number>
-                                    </el-form-item>
-                                    <el-form-item label="饱和度">
-                                        <el-input-number v-model="sdiParams.saturation" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateSDIParam('saturation')"></el-input-number>
-                                    </el-form-item>
-                                    <el-form-item label="色调">
-                                        <el-input-number v-model="sdiParams.hue" :min="-128" :max="127" controls-position="right" style="width: 100%" @change="updateSDIParam('hue')"></el-input-number>
-                                    </el-form-item>
-                                    <el-form-item label="黑白阈值">
-                                        <el-input-number v-model="sdiParams.threshold" :min="0" :max="255" controls-position="right" style="width: 100%" @change="updateSDIParam('threshold')"></el-input-number>
-                                    </el-form-item>
-                                    <el-form-item>
-                                        <el-button type="text" style="width: 100%; text-align: center;" @click="openAdvancedSettings">其他设置</el-button>
-                                    </el-form-item>
-                                </el-form>
-                            </el-dropdown-menu>
-                        </el-dropdown>
+                        <!-- 相机设置按钮 -->
+                        <el-button size="mini" icon="el-icon-setting" @click="openAdvancedSettings" v-if="selectedCamera !== 4">
+                            相机设置
+                        </el-button>
                         <el-switch v-model="cameraEnabled" size="mini" active-text="开" inactive-text="关"></el-switch>
                     </div>
                 </div>
@@ -268,6 +518,19 @@
                         <div v-if="!cameraEnabled" class="cam-viewport__placeholder">
                             <span>相机已关闭</span>
                         </div>
+                    </div>
+                </div>
+                <!-- 滑块控制区 - 放在相机面板底部 -->
+                <div class="panel__ft">
+                    <div class="cam-slider-row">
+                        <span class="cam-slider-row__label">二值化阈值:</span>
+                        <el-slider v-model="sliderSettings.threshold" :min="0" :max="255" :step="1" @change="updateCameraParam('threshold')"></el-slider>
+                        <el-input-number v-model="sliderSettings.threshold" :min="0" :max="255" size="mini" controls-position="right" @change="updateCameraParam('threshold')"></el-input-number>
+                    </div>
+                    <div class="cam-slider-row">
+                        <span class="cam-slider-row__label">中值滤波:</span>
+                        <el-slider v-model="sliderSettings.medianKernelSize" :min="0" :max="31" :step="2" @change="updateCameraParam('medianKernelSize')"></el-slider>
+                        <el-input-number v-model="sliderSettings.medianKernelSize" :min="0" :max="31" :step="2" size="mini" controls-position="right" @change="updateCameraParam('medianKernelSize')"></el-input-number>
                     </div>
                 </div>
             </div>
@@ -309,8 +572,8 @@
                             <el-button size="mini" type="primary" @click="setTargetRotation" :disabled="true">靶标旋转到位</el-button>
                             <el-button size="mini" type="primary" @click="setTargetRotationZero">靶标旋转归零</el-button>
                         </div>
-                        <div class="toolbar">靶标选择：</div>
-                        <div class="toolbar">
+                        <div class="toolbar toolbar--wrap">
+                            <span>靶标选择：</span>
                             <el-button
                                 v-for="(item, index) in targetConfig"
                                 :key="index"
@@ -374,6 +637,25 @@
                                 </span>
                             </div>
                         </div>
+                        <!-- 备注输入区域 -->
+                        <div class="toolbar" style="margin-top: 8px; align-items: flex-start;">
+                            <div style="flex-shrink: 0; line-height: 32px;">测试备注：</div>
+                            <el-input
+                                v-model="testRemark"
+                                type="textarea"
+                                :rows="2"
+                                placeholder="请输入测试备注信息（可选）"
+                                size="small"
+                                style="flex: 1; margin-left: 8px;"
+                            ></el-input>
+                            <el-button
+                                type="primary"
+                                size="small"
+                                style="margin-left: 8px;"
+                                @click="saveRemark"
+                                :disabled="!currentTestRecordId"
+                            >保存备注</el-button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -417,7 +699,7 @@
             <el-button type="primary" @click="confirmParams">确 定</el-button>
         </span>
     </el-dialog>
-    <el-dialog title="高级相机设置" :visible.sync="advancedSettingVisible" width="800px" :close-on-click-modal="false">
+    <el-dialog title="相机设置" :visible.sync="advancedSettingVisible" width="800px" :close-on-click-modal="false">
         <el-tabs type="border-card">
             <!-- 配置保存标签页 -->
             <el-tab-pane label="默认配置">
@@ -513,6 +795,44 @@
                                 </el-row>
                                 <el-alert title="虚拟相机用于静态图像分析，无需其他参数" type="info" :closable="false"></el-alert>
                             </template>
+
+                            <!-- 光轴中心设置（所有相机类型通用） -->
+                            <el-divider content-position="left">光轴中心设置</el-divider>
+                            <el-alert
+                                title="光轴中心用于十字线绘制和偏移计算的基准点。-1 表示使用图像中心 (w-1)/2。"
+                                type="info"
+                                :closable="false"
+                                style="margin-bottom: 10px;">
+                            </el-alert>
+                            <el-row :gutter="20">
+                                <el-col :span="8">
+                                    <el-form-item label="光轴中心X" label-width="80px">
+                                        <el-input-number
+                                            v-model="camConfig.opticalAxisCenterX"
+                                            :controls="false"
+                                            :precision="2"
+                                            :min="-1"
+                                            style="width:100%">
+                                        </el-input-number>
+                                    </el-form-item>
+                                </el-col>
+                                <el-col :span="8">
+                                    <el-form-item label="光轴中心Y" label-width="80px">
+                                        <el-input-number
+                                            v-model="camConfig.opticalAxisCenterY"
+                                            :controls="false"
+                                            :precision="2"
+                                            :min="-1"
+                                            style="width:100%">
+                                        </el-input-number>
+                                    </el-form-item>
+                                </el-col>
+                                <el-col :span="8">
+                                    <el-form-item label-width="0">
+                                        <el-button type="text" @click="clearOpticalAxisCenter(camConfig)">清除(使用默认)</el-button>
+                                    </el-form-item>
+                                </el-col>
+                            </el-row>
                         </el-form>
                     </el-tab-pane>
                 </el-tabs>
@@ -800,7 +1120,8 @@ var vm = new Vue({
             exposureTime: 5000,
             frameRate: 30,
             gain: 0,
-            threshold: 128
+            threshold: 128,
+            medianKernelSize: 0
         },
         // 实时参数（高级设置用 - MvCamera）
         liveParams: {
@@ -829,17 +1150,31 @@ var vm = new Vue({
         // SDI相机参数（相机3）
         sdiParams: {
             threshold: 128,
+            medianKernelSize: 0,
             brightness: 136,
             contrast: 146,
             saturation: 136,
             hue: 0
         },
+        // 虚拟相机参数（相机4 - 静态图片上传）
+        virtualCamParams: {
+            threshold: 128,
+            medianKernelSize: 0
+        },
+        // 存储上传的静态图片文件，以便参数变化时重新处理
+        uploadedImageFile: null,
         // 图像显示缩放
         isZoomMode: false,
         viewRect: null,
         isSelecting: false,
         selectionStart: {x:0, y:0},
-        selectionCurrent: {x:0, y:0}
+        selectionCurrent: {x:0, y:0},
+        // 测试记录ID（用于保存光轴测试记录）
+        currentTestRecordId: null,
+        // 操作人员（从登录信息或本地存储获取）
+        currentOperator: '',
+        // 测试备注
+        testRemark: ''
     },
     computed: {
         activeStageIndex(){
@@ -892,18 +1227,20 @@ var vm = new Vue({
         testAngleYText(){ return this.testAngleYDeg.toFixed(3); },
         dialogTitle(){
             return this.currentDialogStage === 'base' ? '录入基准光轴参数' : '录入测试光轴参数';
+        },
+        // 滑块绑定的设置对象（根据相机类型返回不同对象）
+        sliderSettings() {
+            const camId = this.getCameraIntId(this.selectedCamera);
+            if (camId === 3) {
+                return this.sdiParams;
+            }
+            if (camId === 4) {
+                return this.virtualCamParams;
+            }
+            return this.currentCamSettings;
         }
     },
     watch:{
-        // 下拉框拉开自动断旧相机
-        selectedCamera(newVal, oldVal) {
-            if (this.cameraEnabled) {
-                if(oldVal) this.disconnectCamera(oldVal); // 传入旧值以断开特定ID
-                this.$nextTick(() => {
-                    this.connectCamera();
-                });
-            }
-        },
         // 监听开关
         cameraEnabled(newVal) {
             if (newVal) {
@@ -912,12 +1249,19 @@ var vm = new Vue({
                 this.disconnectCamera(this.selectedCamera);
             }
         },
+        // 切换相机时：先关闭旧相机（特别是SDI），再打开新相机
         selectedCamera(newVal, oldVal) {
-            this.syncCurrentCamSettings(); // 【新增】切换相机时同步设置值
-            
-            if (this.cameraEnabled) {
-                if(oldVal) this.disconnectCamera(oldVal);
-                this.$nextTick(() => { this.connectCamera(); });
+            this.syncCurrentCamSettings(); // 切换相机时同步设置值
+
+            if (this.cameraEnabled && oldVal) {
+                // 先断开旧相机
+                this.disconnectCamera(oldVal);
+                // 等待断开完成后再连接新相机
+                setTimeout(() => {
+                    this.connectCamera();
+                }, 300); // 给SDI相机足够时间释放资源
+            } else if (this.cameraEnabled) {
+                this.connectCamera();
             }
         },
         showOriginal(newVal) {
@@ -974,27 +1318,148 @@ var vm = new Vue({
                 }).catch(()=>{});
                 return;
             }
-            const offsetX = cx - (w/2);
-            const offsetY = cy - (h/2);
+            // 获取当前相机的光轴中心配置
+            const currentCamId = this.getCameraIntId(this.selectedCamera);
+            const currentCamConfig = this.cameraConfigs.find(c => c.id === currentCamId);
+
+            // 如果配置了光轴中心(>=0)则使用配置值，否则(-1表示未设置)使用图像索引中心 (w-1)/2
+            const opticalCenterX = (currentCamConfig && currentCamConfig.opticalAxisCenterX >= 0)
+                ? currentCamConfig.opticalAxisCenterX
+                : (w - 1) / 2;
+            const opticalCenterY = (currentCamConfig && currentCamConfig.opticalAxisCenterY >= 0)
+                ? currentCamConfig.opticalAxisCenterY
+                : (h - 1) / 2;
+
+            const offsetX = cx - opticalCenterX;
+            const offsetY = cy - opticalCenterY;
             this.saveAndProceed(offsetX, offsetY);
         },
         saveAndProceed(offsetX, offsetY) {
+            // 捕获当前帧图像
+            const frameImage = this.captureCurrentFrame();
+            const currentCamId = this.getCameraIntId(this.selectedCamera);
+            const currentCamConfig = this.cameraConfigs.find(c => c.id === currentCamId);
+            const currentCamName = currentCamConfig ? currentCamConfig.name : `相机${currentCamId}`;
+
             // 保存弹窗数据
             if (this.currentDialogStage === 'base') {
                 this.basePixelSize = this.inputParams.pixelSize;
                 this.baseFocalLength = this.inputParams.focalLength;
                 this.baseOffsetPx = { x: offsetX.toFixed(2), y: offsetY.toFixed(2) };
+
+                // 保存基准光轴数据到数据库
+                this.saveBaseAxisRecord(frameImage, currentCamId, currentCamName, offsetX, offsetY);
+
                 this.$message.success('基准光轴数据已记录');
             } else {
                 this.testPixelSize = this.inputParams.pixelSize;
                 this.testFocalLength = this.inputParams.focalLength;
                 this.testOffsetPx = { x: offsetX.toFixed(2), y: offsetY.toFixed(2) };
+
+                // 更新测试光轴数据到数据库
+                this.saveTestAxisRecord(frameImage, currentCamId, currentCamName, offsetX, offsetY);
+
                 this.$message.success('测试光轴数据已记录');
             }
 
             // 关闭弹窗并跳转
             this.paramDialogVisible = false;
             this.currentStep += 1;
+        },
+        // 捕获当前Canvas帧为base64图像
+        captureCurrentFrame() {
+            if (!this.canvas) return null;
+            try {
+                return this.canvas.toDataURL('image/png');
+            } catch (e) {
+                console.error('捕获帧失败:', e);
+                return null;
+            }
+        },
+        // 保存基准光轴记录
+        saveBaseAxisRecord(frameImage, cameraId, cameraName, offsetX, offsetY) {
+            const data = {
+                operator: this.currentOperator,
+                base_camera_id: cameraId,
+                base_camera_name: cameraName,
+                base_image: frameImage,
+                base_width: this.imageInfo.width,
+                base_height: this.imageInfo.height,
+                base_centroid_x: this.imageInfo.centroidX,
+                base_centroid_y: this.imageInfo.centroidY,
+                base_focal_length: this.inputParams.focalLength,
+                base_pixel_size: this.inputParams.pixelSize,
+                base_offset_x: this.angleXDeg,
+                base_offset_y: this.angleYDeg
+            };
+
+            axios.post('/api/tests/optical-axis', data)
+                .then(res => {
+                    if (res.data.success) {
+                        this.currentTestRecordId = res.data.id;
+                        console.log('基准光轴记录已保存, ID:', res.data.id);
+                    } else {
+                        console.error('保存基准光轴记录失败:', res.data.message);
+                    }
+                })
+                .catch(err => {
+                    console.error('保存基准光轴记录失败:', err);
+                });
+        },
+        // 保存测试光轴记录（更新已有记录）
+        saveTestAxisRecord(frameImage, cameraId, cameraName, offsetX, offsetY) {
+            if (!this.currentTestRecordId) {
+                console.warn('没有基准光轴记录ID，无法更新测试光轴数据');
+                return;
+            }
+
+            const data = {
+                test_camera_id: cameraId,
+                test_camera_name: cameraName,
+                test_image: frameImage,
+                test_width: this.imageInfo.width,
+                test_height: this.imageInfo.height,
+                test_centroid_x: this.imageInfo.centroidX,
+                test_centroid_y: this.imageInfo.centroidY,
+                test_focal_length: this.inputParams.focalLength,
+                test_pixel_size: this.inputParams.pixelSize,
+                test_offset_x: this.testAngleXDeg,
+                test_offset_y: this.testAngleYDeg,
+                remark: this.testRemark
+            };
+
+            axios.put('/api/tests/optical-axis/' + this.currentTestRecordId, data)
+                .then(res => {
+                    if (res.data.success) {
+                        console.log('测试光轴记录已更新');
+                    } else {
+                        console.error('更新测试光轴记录失败:', res.data.message);
+                    }
+                })
+                .catch(err => {
+                    console.error('更新测试光轴记录失败:', err);
+                });
+        },
+        // 单独保存备注
+        saveRemark() {
+            if (!this.currentTestRecordId) {
+                this.$message.warning('请先完成基准光轴测试');
+                return;
+            }
+
+            axios.put('/api/tests/optical-axis/' + this.currentTestRecordId, {
+                remark: this.testRemark
+            })
+            .then(res => {
+                if (res.data.success) {
+                    this.$message.success('备注已保存');
+                } else {
+                    this.$message.error('保存失败: ' + res.data.message);
+                }
+            })
+            .catch(err => {
+                this.$message.error('保存失败: ' + err.message);
+            });
         },
         calcAngle(pxSize, fLen, offsetPx) {
             const p = Number(pxSize) || 0;
@@ -1028,6 +1493,12 @@ var vm = new Vue({
                 this.fineMoveX = 0;
                 this.fineRotate = 0;
                 this.inputParams = { pixelSize: -1, focalLength: -1 };
+
+                // 4. 重置测试记录ID
+                this.currentTestRecordId = null;
+
+                // 5. 重置备注
+                this.testRemark = '';
 
                 this.$message.success('已重置，请开始新一轮测试');
             }).catch(() => {});
@@ -1088,21 +1559,62 @@ var vm = new Vue({
                 }
             });
         },
+        clearOpticalAxisCenter(camConfig) {
+            // 清除光轴中心设置，-1表示使用图像中心作为默认值
+            camConfig.opticalAxisCenterX = -1;
+            camConfig.opticalAxisCenterY = -1;
+            this.$message.info('光轴中心已清除，将使用图像中心作为默认值');
+        },
         updateCameraParam(type) {
-            // 1. 发送指令给MvCamera硬件（相机1/2）
-            if (this.isConnected) {
-                const val = this.currentCamSettings[type];
-                const camId = this.getCameraIntId(this.selectedCamera);
-                // 只有MvCamera相机发送参数
-                if(camId === 1 || camId === 2){
-                    console.log(`发送参数设置: ID=${camId}, Type=${type}, Val=${val}`);
-                    this.socket.emit('camera_set_param',{
-                        cameraId: camId,
-                        type: type,
-                        value: val
-                    });
+            const camId = this.getCameraIntId(this.selectedCamera);
+
+            // 虚拟相机（相机4）：重新处理已上传的静态图片
+            if (camId === 4) {
+                if (this.uploadedImageFile) {
+                    this.reprocessVirtualImage();
                 }
+                return;
             }
+
+            // 发送指令给相机硬件
+            if (this.isConnected) {
+                let val;
+
+                // 根据相机类型获取参数值
+                if (camId === 3) {
+                    // SDI相机使用sdiParams
+                    val = this.sdiParams[type];
+                } else {
+                    // MvCamera使用currentCamSettings
+                    val = this.currentCamSettings[type];
+                }
+
+                console.log(`发送参数设置: ID=${camId}, Type=${type}, Val=${val}`);
+                this.socket.emit('camera_set_param',{
+                    cameraId: camId,
+                    type: type,
+                    value: val
+                });
+            }
+        },
+        // 重新处理虚拟相机图片（参数变化时调用）
+        reprocessVirtualImage() {
+            if (!this.uploadedImageFile) return;
+
+            const formData = new FormData();
+            formData.append('image', this.uploadedImageFile);
+            formData.append('threshold', this.virtualCamParams.threshold);
+            formData.append('medianKernelSize', this.virtualCamParams.medianKernelSize);
+
+            axios.post('/api/virtual-camera/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            }).then(res => {
+                if (res.data.success && res.data.frameData) {
+                    this.handleNewFrame(res.data.frameData);
+                }
+            }).catch(err => {
+                console.error('图片重新处理失败:', err);
+            });
         },
         // SDI相机参数设置
         updateSDIParam(type) {
@@ -1285,10 +1797,22 @@ var vm = new Vue({
                 // 绘制
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 this.ctx.drawImage(img, 0, 0);
-                
+
                 // 如果需要在静态图上也画十字，可以调用
                 if(this.drawCross){
-                    this.drawCenterCross(this.canvas.width, this.canvas.height);
+                    // 获取当前相机的光轴中心配置
+                    const currentCamId = this.getCameraIntId(this.selectedCamera);
+                    const currentCamConfig = this.cameraConfigs.find(c => c.id === currentCamId);
+
+                    // 光轴中心（图像坐标），-1表示未设置，使用图像中心 (w-1)/2
+                    const opticalCenterX = (currentCamConfig && currentCamConfig.opticalAxisCenterX >= 0)
+                        ? currentCamConfig.opticalAxisCenterX
+                        : (img.width - 1) / 2;
+                    const opticalCenterY = (currentCamConfig && currentCamConfig.opticalAxisCenterY >= 0)
+                        ? currentCamConfig.opticalAxisCenterY
+                        : (img.height - 1) / 2;
+
+                    this.drawCenterCross(this.canvas.width, this.canvas.height, opticalCenterX, opticalCenterY);
                 }
             };
             img.src = this.camera3Source;
@@ -1318,7 +1842,7 @@ var vm = new Vue({
             //   断开socket
             this.socket.on('disconnect', ()=>{
                 console.log('Socket 断开成功');
-                this.isConnected = flase;
+                this.isConnected = false;
             });
             // 连接相机
             this.socket.on('camera_connected', (data) => {
@@ -1352,6 +1876,11 @@ var vm = new Vue({
                             this.$message.success("相机已连接，已应用默认配置");
                         }
                     })
+                } else {
+                    // 连接失败，恢复开关状态
+                    this.cameraEnabled = false;
+                    this.isConnected = false;
+                    this.$message.error(data.message || '相机连接失败');
                 }
             });
             // 监听错误
@@ -1505,9 +2034,29 @@ var vm = new Vue({
                 else{
                     this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
                 }
-                
+
                 if(this.drawCross){
-                    this.drawCenterCross(this.canvas.width, this.canvas.height);
+                    // 获取当前相机的光轴中心配置
+                    const currentCamId = this.getCameraIntId(this.selectedCamera);
+                    const currentCamConfig = this.cameraConfigs.find(c => c.id === currentCamId);
+
+                    // 光轴中心（图像坐标），-1表示未设置，使用图像中心 (w-1)/2
+                    let opticalCenterX = (currentCamConfig && currentCamConfig.opticalAxisCenterX >= 0)
+                        ? currentCamConfig.opticalAxisCenterX
+                        : (data.width - 1) / 2;
+                    let opticalCenterY = (currentCamConfig && currentCamConfig.opticalAxisCenterY >= 0)
+                        ? currentCamConfig.opticalAxisCenterY
+                        : (data.height - 1) / 2;
+
+                    // 如果在放大模式，需要将图像坐标映射到 Canvas 坐标
+                    if (this.viewRect) {
+                        const scaleX = this.canvas.width / this.viewRect.w;
+                        const scaleY = this.canvas.height / this.viewRect.h;
+                        opticalCenterX = (opticalCenterX - this.viewRect.x) * scaleX;
+                        opticalCenterY = (opticalCenterY - this.viewRect.y) * scaleY;
+                    }
+
+                    this.drawCenterCross(this.canvas.width, this.canvas.height, opticalCenterX, opticalCenterY);
                 }
                 if(this.drawCentroid & data.centroidX > 0 & data.centroidY > 0){
                     let drawX, drawY;
@@ -1547,13 +2096,14 @@ var vm = new Vue({
             };
             img.src = data.image;
         },
-        drawCenterCross(w, h){
-            const centerX = w / 2;
-            const centerY = h / 2;
+        drawCenterCross(w, h, opticalCenterX, opticalCenterY){
+            // 使用光轴中心坐标（如果提供），否则使用默认的图像中心
+            const centerX = (opticalCenterX !== undefined && opticalCenterX !== null) ? opticalCenterX : w / 2;
+            const centerY = (opticalCenterY !== undefined && opticalCenterY !== null) ? opticalCenterY : h / 2;
 
             // 1. 绘制横线
             this.ctx.beginPath();
-            this.ctx.strokeStyle = '#00FF00'; 
+            this.ctx.strokeStyle = '#00FF00';
             this.ctx.lineWidth = 1;
             this.ctx.moveTo(0, centerY);
             this.ctx.lineTo(w, centerY);
@@ -1581,9 +2131,14 @@ var vm = new Vue({
             const file = e.target.files[0];
             if (!file) return;
 
+            // 存储文件以便参数变化时重新处理
+            this.uploadedImageFile = file;
+
             // 创建FormData发送到后端API
             const formData = new FormData();
             formData.append('image', file);
+            formData.append('threshold', this.virtualCamParams.threshold);
+            formData.append('medianKernelSize', this.virtualCamParams.medianKernelSize);
 
             axios.post('/api/virtual-camera/upload', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
@@ -1603,7 +2158,7 @@ var vm = new Vue({
             e.target.value = '';
         },
         sendCmd(device, cmd, params = {}, wait_response = false, successMsg = "指令发送成功"){
-            axios.post('/api/command/send',{
+            return axios.post('/api/command/send',{
                 device: device,
                 cmd: cmd,
                 params: params,
@@ -1612,12 +2167,15 @@ var vm = new Vue({
             }).then(res => {
                 if(res.data.success){
                     this.$message.success(successMsg);
+                    return { success: true, data: res.data };
                 }
                 else{
-                    this.$message.error('指令发送失败' + res.data.message);
+                    this.$message.error('指令发送失败: ' + res.data.message);
+                    return { success: false, message: res.data.message };
                 }
             }).catch(err => {
-                this.$message.error('通信失败' + err);
+                this.$message.error('通信失败: ' + err);
+                return { success: false, message: err.toString() };
             })
         },
         setLaserHorizontal(){
@@ -1651,50 +2209,65 @@ var vm = new Vue({
             // 发送旋转到位指令
             // 该函数无用，切换靶标使用setTarget()函数
         },
-        toggleLaser(){
-            this.laserOn = !this.laserOn;
-            // 发送开/关指令
+        async toggleLaser(){
+            // 计算目标状态和功率值
+            const targetOn = !this.laserOn;
             let powerVal = parseInt(this.laserPower);
             if (powerVal < 0) powerVal = 0;
             if (powerVal > 100) powerVal = 100;
-            const valToSend = this.laserOn ? powerVal : 0;
-            this.sendCmd('light_source', 'set_indicator_laser_power', { power: valToSend }, false,
-                this.laserOn ? `指示激光已打开 (功率: ${valToSend})` : '指示激光已关闭');
+            const valToSend = targetOn ? powerVal : 0;
+
+            // 发送开/关指令，成功后才切换状态
+            const result = await this.sendCmd('light_source', 'set_indicator_laser_power', { power: valToSend }, true,
+                targetOn ? `指示激光已打开 (功率: ${valToSend})` : '指示激光已关闭');
+            if (result.success) {
+                this.laserOn = targetOn;
+            }
         },
         updateLaserPower(){
             if (!this.laserOn) return;
             const val = parseInt(this.laserPower);
-            this.sendCmd('light_source', 'set_indicator_laser_power', { power: val }, false, `激光功率已更新为 ${val}`);
+            this.sendCmd('light_source', 'set_indicator_laser_power', { power: val }, true, `激光功率已更新为 ${val}`);
         },
-        toggleVisibleLight(){
-            this.visibleLightOn = !this.visibleLightOn;
-            // 发送开/关指令
+        async toggleVisibleLight(){
+            // 计算目标状态和亮度值
+            const targetOn = !this.visibleLightOn;
             let lightVal = parseInt(this.visibleLightPower);
             if (lightVal < 0) lightVal = 0;
             if (lightVal > 100) lightVal = 100;
-            const valToSend = this.visibleLightOn ? lightVal : 0;
-            this.sendCmd('light_source', 'set_visible_light_power', { light: valToSend }, false,
-                this.visibleLightOn ? `可见光已打开 (亮度: ${valToSend})` : '可见光已关闭');
+            const valToSend = targetOn ? lightVal : 0;
+
+            // 发送开/关指令，成功后才切换状态
+            const result = await this.sendCmd('light_source', 'set_visible_light_power', { light: valToSend }, true,
+                targetOn ? `可见光已打开 (亮度: ${valToSend})` : '可见光已关闭');
+            if (result.success) {
+                this.visibleLightOn = targetOn;
+            }
         },
         updateVisibleLightPower(){
             if (!this.visibleLightOn) return;
             const val = parseInt(this.visibleLightPower);
-            this.sendCmd('light_source', 'set_visible_light_power', { light: val }, false, `可见光亮度已更新为 ${val}`);
+            this.sendCmd('light_source', 'set_visible_light_power', { light: val }, true, `可见光亮度已更新为 ${val}`);
         },
-        toggleBlackbody(){
-            this.blackbodyOn = !this.blackbodyOn;
-            // 发送开/关指令
+        async toggleBlackbody(){
+            // 计算目标状态和温度值
+            const targetOn = !this.blackbodyOn;
             let tempVal = parseInt(this.blackbodyTemperature);
             if (tempVal < 0) tempVal = 0;
             if (tempVal > 100) tempVal = 100;
-            const valToSend = this.blackbodyOn ? tempVal : 0;
-            this.sendCmd('light_source', 'set_blackbody_temperature', { temperature: valToSend }, false,
-                this.blackbodyOn ? `黑体已打开 (温度: ${valToSend})` : '黑体已关闭');
+            const valToSend = targetOn ? tempVal : 0;
+
+            // 发送开/关指令，成功后才切换状态
+            const result = await this.sendCmd('light_source', 'set_blackbody_temperature', { temperature: valToSend }, true,
+                targetOn ? `黑体已打开 (温度: ${valToSend})` : '黑体已关闭');
+            if (result.success) {
+                this.blackbodyOn = targetOn;
+            }
         },
         updateBlackbodyTemperature(){
             if (!this.blackbodyOn) return;
             const val = parseInt(this.blackbodyTemperature);
-            this.sendCmd('light_source', 'set_blackbody_temperature', { temperature: val }, false, `黑体温度已更新为 ${val}`);
+            this.sendCmd('light_source', 'set_blackbody_temperature', { temperature: val }, true, `黑体温度已更新为 ${val}`);
         },
         nudgeHorizontal(){
             // 发送水平微调指令（fineMoveX）
@@ -1742,6 +2315,8 @@ var vm = new Vue({
         this.initCanvas();
         this.initSocket();
         this.loadCameraConfig();
+        // 从sessionStorage获取操作人员（登录时存储）
+        this.currentOperator = sessionStorage.getItem('usrname') || '未知';
     },
     beforeDestroy(){
         if(this.socket){

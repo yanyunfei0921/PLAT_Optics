@@ -5,41 +5,49 @@
       "frameRate": 10,
       "gain": 0,
       "id": 1,
-      "ip": "10.64.192.226",
+      "ip": "10.64.247.121",
       "isVirtual": false,
-      "name": "相机1",
+      "name": "SVM相机1",
       "threshold": 128,
-      "type": "mvcamera"
+      "type": "mvcamera",
+      "opticalAxisCenterX": -1,
+      "opticalAxisCenterY": -1
     },
     {
       "exposureTime": 5000,
       "frameRate": 9,
       "gain": 0,
       "id": 2,
-      "ip": "10.64.17.146",
+      "ip": "10.64.60.132",
       "isVirtual": false,
-      "name": "相机2",
+      "name": "SVM相机2",
       "threshold": 128,
-      "type": "mvcamera"
+      "type": "mvcamera",
+      "opticalAxisCenterX": -1,
+      "opticalAxisCenterY": -1
     },
     {
-      "id": 3,
-      "name": "SDI采集",
-      "threshold": 128,
-      "isVirtual": false,
-      "type": "sdi",
-      "sdiChannel": 0,
       "brightness": 136,
       "contrast": 146,
+      "hue": 0,
+      "id": 3,
+      "isVirtual": false,
+      "name": "SDI采集卡",
       "saturation": 136,
-      "hue": 0
+      "sdiChannel": 0,
+      "threshold": 128,
+      "type": "sdi",
+      "opticalAxisCenterX": -1,
+      "opticalAxisCenterY": -1
     },
     {
       "id": 4,
+      "isVirtual": true,
       "name": "静态图像上传",
       "threshold": 128,
-      "isVirtual": true,
-      "type": "virtual"
+      "type": "virtual",
+      "opticalAxisCenterX": -1,
+      "opticalAxisCenterY": -1
     }
   ]
 }
