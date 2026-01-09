@@ -43,15 +43,15 @@
                 <div slot="header" class="clearfix">
                     <h1>光电测试系统软件平台</h1>
                 </div>
-                <el-form :model="usrInfo">
+                <el-form :model="usrInfo" @submit.native.prevent="logAdmin">
                     <el-form-item label="用户名">
-                        <el-input v-model="usrInfo.usrName" placeholder="请输入内容"></el-input>
+                        <el-input v-model="usrInfo.usrName" placeholder="请输入内容" @keyup.enter.native="logAdmin"></el-input>
                     </el-form-item>
                     <el-row style="float: right;">
                         <el-button @click="logAdmin" type="info" plain style="margin-top: 20px; margin-bottom: 20px; margin-right: 20px;">登录</el-button>
                     </el-row>
                 </el-form>
-                <el-divider content-position="right">版本号:&nbsp;v1.3&nbsp;(2025-10)</el-divider>
+                <el-divider content-position="right">版本号:&nbsp;v1.4&nbsp;(2026-01)</el-divider>
             </el-card>
         </div>
     </div>

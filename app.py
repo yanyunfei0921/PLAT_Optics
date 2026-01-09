@@ -760,6 +760,28 @@ def delete_optical_test(test_id):
 
 
 # --------------------- 导出 API ---------------------
+def hex_to_string(hex_str):
+    """将HEX字符串转换为可读字符串"""
+    if not hex_str or hex_str == '-':
+        return ''
+    try:
+        # 移除空格，将HEX字符串按每2个字符分割
+        hex_clean = hex_str.replace(' ', '')
+        result = ''
+        for i in range(0, len(hex_clean), 2):
+            if i + 2 <= len(hex_clean):
+                hex_byte = hex_clean[i:i+2]
+                char_code = int(hex_byte, 16)
+                # 只显示可打印字符(32-126)和常见扩展ASCII(128-255)，其他用点号表示
+                if (32 <= char_code <= 126) or (128 <= char_code <= 255):
+                    result += chr(char_code)
+                else:
+                    result += '.'
+        return result
+    except Exception:
+        return hex_str  # 转换失败返回原字符串
+
+
 @app.route('/api/export/serial-logs/excel', methods=['GET'])
 def export_serial_logs_excel():
     """导出串口日志为Excel"""
@@ -777,7 +799,9 @@ def export_serial_logs_excel():
         ws.title = '串口日志'
 
         # 设置表头
-        headers = ['ID', '时间', '设备', '串口', '指令', '参数', '发送数据(HEX)', '返回数据(HEX)', '状态', '消息']
+        headers = ['ID', '时间', '设备', '串口', '指令', '参数',
+                   '发送数据(HEX)', '发送数据(字符)', '返回数据(HEX)', '返回数据(字符)',
+                   '状态', '消息']
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.font = Font(bold=True)
@@ -803,13 +827,20 @@ def export_serial_logs_excel():
             ws.cell(row=row, column=4, value=log['port'])
             ws.cell(row=row, column=5, value=log['command'])
             ws.cell(row=row, column=6, value=log['params'])
+            # 发送数据 HEX
             ws.cell(row=row, column=7, value=log['cmd_bytes'])
-            ws.cell(row=row, column=8, value=log['response_bytes'])
-            ws.cell(row=row, column=9, value='成功' if log['success'] else '失败')
-            ws.cell(row=row, column=10, value=log['message'])
+            # 发送数据 字符
+            ws.cell(row=row, column=8, value=hex_to_string(log['cmd_bytes']))
+            # 返回数据 HEX
+            ws.cell(row=row, column=9, value=log['response_bytes'])
+            # 返回数据 字符
+            ws.cell(row=row, column=10, value=hex_to_string(log['response_bytes']))
+            # 状态和消息
+            ws.cell(row=row, column=11, value='成功' if log['success'] else '失败')
+            ws.cell(row=row, column=12, value=log['message'])
 
         # 调整列宽
-        column_widths = [8, 20, 15, 10, 20, 30, 30, 30, 8, 40]
+        column_widths = [8, 20, 15, 10, 20, 30, 30, 25, 30, 25, 8, 40]
         for col, width in enumerate(column_widths, 1):
             ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = width
 

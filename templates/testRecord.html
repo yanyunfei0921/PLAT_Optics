@@ -198,6 +198,14 @@
                                 <el-button type="primary" size="small" @click="loadSerialLogs" :loading="serialLoading">刷新</el-button>
                             </div>
                             <div class="toolbar-right">
+                                <span class="filter-label">数据格式:</span>
+                                <el-switch
+                                    v-model="serialShowHex"
+                                    active-text="HEX"
+                                    inactive-text="字符"
+                                    size="small"
+                                    style="margin-right: 12px;">
+                                </el-switch>
                                 <el-button type="success" size="small" @click="exportSerialLogsExcel" :disabled="serialLogs.length === 0">导出Excel</el-button>
                                 <el-button type="danger" size="small" @click="clearSerialLogs" :disabled="serialLogs.length === 0">清空日志</el-button>
                             </div>
@@ -217,14 +225,18 @@
                                     <span :title="scope.row.params">{{ truncateText(scope.row.params, 20) }}</span>
                                 </template>
                             </el-table-column>
-                            <el-table-column prop="cmd_bytes" label="发送(HEX)" width="150">
+                            <el-table-column :label="serialShowHex ? '发送(HEX)' : '发送(字符)'" width="180">
                                 <template slot-scope="scope">
-                                    <span class="hex-cell" :title="scope.row.cmd_bytes">{{ scope.row.cmd_bytes || '-' }}</span>
+                                    <span class="hex-cell" :title="serialShowHex ? scope.row.cmd_bytes : hexToString(scope.row.cmd_bytes)">
+                                        {{ serialShowHex ? (scope.row.cmd_bytes || '-') : (hexToString(scope.row.cmd_bytes) || '-') }}
+                                    </span>
                                 </template>
                             </el-table-column>
-                            <el-table-column prop="response_bytes" label="返回(HEX)" width="150">
+                            <el-table-column :label="serialShowHex ? '返回(HEX)' : '返回(字符)'" width="180">
                                 <template slot-scope="scope">
-                                    <span class="hex-cell" :title="scope.row.response_bytes">{{ scope.row.response_bytes || '-' }}</span>
+                                    <span class="hex-cell" :title="serialShowHex ? scope.row.response_bytes : hexToString(scope.row.response_bytes)">
+                                        {{ serialShowHex ? (scope.row.response_bytes || '-') : (hexToString(scope.row.response_bytes) || '-') }}
+                                    </span>
                                 </template>
                             </el-table-column>
                             <el-table-column prop="success" label="状态" width="60" align="center">
@@ -441,8 +453,9 @@ new Vue({
         serialLogs: [],
         serialTotal: 0,
         serialPage: 1,
-        serialPageSize: 50,
+        serialPageSize: 15,
         serialLoading: false,
+        serialShowHex: true,  // true=HEX显示, false=字符显示
         serialFilter: {
             device: '',
             port: ''
@@ -454,7 +467,7 @@ new Vue({
         opticalTests: [],
         opticalTotal: 0,
         opticalPage: 1,
-        opticalPageSize: 20,
+        opticalPageSize: 15,
         opticalLoading: false,
         opticalDetailVisible: false,
         selectedOpticalTest: null,
@@ -634,6 +647,29 @@ new Vue({
             if (!text) return '-';
             if (text.length <= maxLen) return text;
             return text.substring(0, maxLen) + '...';
+        },
+
+        // 将HEX字符串转换为可读字符串
+        hexToString(hexStr) {
+            if (!hexStr || hexStr === '-') return '';
+            try {
+                // 移除空格，将HEX字符串按每2个字符分割
+                const hex = hexStr.replace(/\s+/g, '');
+                let result = '';
+                for (let i = 0; i < hex.length; i += 2) {
+                    const hexByte = hex.substr(i, 2);
+                    const charCode = parseInt(hexByte, 16);
+                    // 只显示可打印字符(32-126)和常见扩展ASCII(128-255)，其他用点号表示
+                    if ((charCode >= 32 && charCode <= 126) || (charCode >= 128 && charCode <= 255)) {
+                        result += String.fromCharCode(charCode);
+                    } else {
+                        result += '.';
+                    }
+                }
+                return result;
+            } catch (e) {
+                return hexStr; // 转换失败返回原字符串
+            }
         }
     }
 });

@@ -12,7 +12,8 @@
       "Bash(findstr:*)",
       "Bash(ls:*)",
       "Bash(cat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(.venv/Scripts/pip:*)"
     ]
   }
 }

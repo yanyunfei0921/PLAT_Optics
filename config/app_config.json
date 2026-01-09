@@ -9,7 +9,7 @@
     "queue_size": 2
   },
   "serial": {
-    "debug_mode": true,
+    "debug_mode": false,
     "idle_timeout_ms": 100,
     "default_timeout_ms": 2000
   }
